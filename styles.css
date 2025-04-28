@@ -1,0 +1,80 @@
+@font-face{
+	font-family: "B612";
+	src: url("B612.ttf")
+}
+body {
+	background-color: black;
+	font-family: "B612";
+	overflow: hidden;
+	padding-top: 10px;
+	padding-bottom: 20px;
+	padding-left: 20px;
+	line-height: 1.30;
+}
+
+.headers{
+	color: lightblue; 
+	font-weight: bold;
+}
+
+.element{
+	display: inline-block; 
+	font-weight: bold; 
+	position: absolute; 
+	left: 16em;
+}
+
+.element12{
+	display: inline-block; 
+	font-weight: bold; 
+	position: absolute; 
+	left: 12em;
+}
+
+hr {
+	margin: 30px 0;
+}
+
+.main{
+	color: white;
+	font-size: 20px;
+}
+
+.dir{
+	color: white;
+	font-size: 20px;
+}
+a {
+    color: lime; 
+}
+
+a:visited {
+    color: lime; 
+}
+
+h2 {
+	color: white;
+	margin-bottom: 0px;
+}
+
+h3 {
+	color: white;
+	margin-bottom: 10px;
+}
+
+button {
+	background-color: black;
+	color: white;
+	transition-duration: 0.5s;
+}
+
+button:hover {
+	background-color: white;
+	color: black;
+	transition: 0.5s;
+	cursor: pointer;
+}
+
+button:active {
+	background-colour: lime;
+}
