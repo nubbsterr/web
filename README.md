@@ -2,7 +2,7 @@
 My new and improved portfolio website written in HTML and CSS (never touching flask ever again.)
 
 # Project Status
-First iteration of the website is live! I spent ~6-7 hours just grinding it out and making it look pretty but simple. I'll continue adding to it down the line, but for now, I am mclovin' it indeed.
+I purchased a domain and have it running very nicely at the moment (from what I can tell, who knows if I'm being hacked rn man.) I also added a lil easter egg in the site for people solve, not that it's hard or anything. I also tried to make the site slightly more mobile friendly but that is to be tested; I won't make this site totoally responsive though.
 
 # Inspiration and Criteria
 - Use basic HTML and CSS, JS is optional (native JS, no frameworks)
