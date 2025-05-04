@@ -1,7 +1,8 @@
-@font-face{
+@font-face {
 	font-family: "B612";
 	src: url("B612.ttf")
 }
+
 body {
 	background-color: black;
 	font-family: "B612";

@@ -2,10 +2,9 @@
 My new and improved portfolio website written in HTML and CSS (never touching flask ever again.)
 
 # Project Status
-I purchased a domain and have it running very nicely at the moment (from what I can tell, who knows if I'm being hacked rn man.) I also added a lil easter egg in the site for people solve, not that it's hard or anything. I also tried to make the site slightly more mobile friendly but that is to be tested; I won't make this site totoally responsive though.
+Am still attempting to make the site mobile friendly; not going too well since I really like the 'table' style I have but it totally ruins any sort of flexible (literally) response to viewport sizes, so I might need to ditch it? If you guys got ideas to fixes, please DM me on Discord :)
 
-# Inspiration and Criteria
+# Inspiration/Criteria/Checklist
 - Use basic HTML and CSS, JS is optional (native JS, no frameworks)
-- Monospace font using bright/vibrant colours; a lot of inspiration from [x0reaxe's website.](x0reaxe.ax)
-- Blog posts/writeups will be on the webpage
+- Monospace font using bright/vibrant colours; a lot of inspiration from [x0reaxe's website.](x0reaxe.ax) (As of May 3, their site is down.)
 - More media? dunno  
