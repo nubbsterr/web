@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>nubb/blog/meerkat</title>
+	<meta charset="UTF-8">
+	<meta name="description" content="a really scuffed meerkat machine writeup.">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="../styles.css">
+	<link rel="icon" type="image/x-icon" href="../images/favicon.ico">
+</head>
+<body>
+	<div class="main">
+		<div class="blog">
+			<h2>> meerkat - a scuffed writeup</h2>
+			<br>
+			<p>Ten years later and I finally write another blog post. If you haven't noticed yet, I have updated the websites styles but also <b>made it mobile responsive!</b> With that being said, welcome to my first wrteup! By no means is this a formal report, or even <i>decently detailed</i>, but it's a start in my books.</p>
+			<p>With all'at being said, let's get started.</p>
+			<p>Upon unziping the lab files, we have a PCAP file and a .json file, titled <code>meerkat.alerts.json</code> . The first question says: <b>We believe our Business Management Platform server has been compromised. Please can you confirm the name of the application running?</b> Let's check the json file for any alerts!</p>
+
+			<p>Running <code>cat meerkat.alerts.json | jq</code> shows a large output, so I went ahead and opening this in a text editor instead and Crtl+F'd for `alert` and started searching for program names. The questions hints at it being 10 characters long and ending with a 't'. This was also absurdly long and very laggy so I then decided to make a Python script to find anything ten characters long, ending with a 't', and to print the string found:</p>
+
+			<code>cat meerkat-alerts.json | jq -r | grep -w "whatever-pattern-i-thought-of"</code>
+
+			<p>The whatever pattern was mainly due to the fact that I was so incredibly lost on finding the application name. I legit checked the writeup JUST to figure out how they may have filtered for this crap. Turns out, they used a similar `jq` filter:</p>
+
+			<code>jq '.[].alert.signature' meerkat-alerts.json</code>
+
+			<p>This would recursively filter for the signatures in the file provided, which is what we want. Doing so, we see a LOT of login attempts from this <i>Bonitasoft</i> application. This is 100% a brute force attempt but we'll be sure to diagnose this. I initially thought the attack type would be found in the json data, but that isn't the case. Only upon checking the writeup did I find out that you're supposed to search for the CVE related to this software; <a href="https://nvd.nist.gov/vuln/detail/CVE-2022-25237">CVE-2022-25237</a>. I once again went back to the writeup where I found out that this is Credential Stuffing. We can see this by examining the HTTP traffic and seeing that each attempted username and password follows a sort of rythym; not guessing like password guessing, nor cracking, nor spraying since none of these are common. We can see all of this on MITRE ATT&CK.</p>
+
+			<p>In Wireshark, the POST requests all contains <i>username</i> and <i>password</i> fields with first and last names for the <i>username</i>. This gives us a good lead to this being Credential Stuffing if we couldn't already cancel out the possibilities of the other 3 brute force techniques.</p>
+
+			<p>The string that was commonly appended to the <i>bonita/API</i> URL can be seen as <i>i18ntranslation</i>.
+
+			<p>Very funny how HTB just TELLS YOU the brute force method they used in another question. Regardless, in total, there are <b>236</b> packets with requests to the <i>bonita/loginservice</i> URL (I just selected all of the visible packets in wireshark). We can split that in half since half of that are HTTP responses, and another half to get unique passwords used. For some unknown reason, they used some `seb.broom` username THREE TIMES. Like, bro? Anyways, we decrement our current count by 3, which gives us a final answer of <b>56 attempted credentials.</b></p>
+
+			<p>To find the successful attempt, we can simply go and check the last request made and check for more HTTP traffic in wireshark. The last made POST request to the login page was made at packet #3550, so we'll go there and check out what happens and see that last used credentials, or at least what we think is right. From what I can see, <i>seb.broom@forela.co.uk:g0vernm3nt</i> are the last used, and successful credentials here.</p>
+
+			<p>To find this site, we can just check the requests made and find it. Hilariously enough, it was hidden inside one of the request URLs, which I couldn't find and, once again, consulted the writeup for help; <i>pastes.io</i> is our culprit!</p>
+
+			<p>By going to the <i>pastes.io</i> URL, we can see that it reaches out to ANOTHER <i>pastes.io</i> URL, for a file named <i>hffgra4unv</i>, which gets its input put into a list of SSH keys, which have 100% been used for remote access at this point.</p>
+
+			<p>Finally, the MITRE technique used here is <a href="https://attack.mitre.org/techniques/T1098/004/" target="_blank">T1098.004</a>, which is just modifying SSH keys so that when an SSH connection is established, and a public key used is listed, we can gain access to the machine. It is that shrimple.</p>
+
+			<p>My final thoughts on the lab were that it was a lot harder than I thought it would be. Required a lot more thinking that I thought which was kinda to my detriment in the end since I underestimated the difficulty of this lab. Good learning experience though; just read better and don't try to speedrun too hard. Through things against the wall and see what sticks.</p>
+			<p>Next time I write one of these, I'll probably write them on <a href="https://medium.com/@nubb" target="_blank">Medium</a> so I can have real code blocks and whatnot; styling is not my thing. I hope to post another writeup by the end of this week or next week!</p>
+		</div>	
+	</div>
+	<hr>
+	<div class="dir">
+		<span class="headers">cd</span>
+		<span class="element12"><a href="meerkat.html">.</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../blog.html">..</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../notes.html">../notes and resources</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../index.html">~</a></span>
+	</div>
+</body>
+</html>
