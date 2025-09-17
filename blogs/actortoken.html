@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>nubb/blog/actortokens</title>
+	<meta charset="UTF-8">
+	<meta name="description" content="A small rant about Actor Tokens in Entra ID (all thanks to a shared blog post)">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="../styles.css">
+	<link rel="icon" type="image/x-icon" href="../images/favicon.ico">
+</head>
+<body>
+	<div class="main">
+		<div class="blog">
+			<h2>> actor tokens</h2>
+			<br>
+            <p>Yep, Entra ID. We all have our (love)/hate relationship with Microsoft, be it with using their products, assessing the security of their products, etc. As I was at uni today, chilling, Lavender (Discord contact; red team ops) shared a lovely <a href="https://dirkjanm.io/obtaining-global-admin-in-every-entra-id-tenant-with-actor-tokens/" target="_blank">blog post about Actor Tokens in Entra ID.</a> What followed suit was a full 10 minutes of me malding, fuming, at the sheer negligence to basic security practices for privileged access features/products, so much so that I made a LINKEDIN POST. It takes a LOT for me to make a LinkedIn post; I don't just make them willy nilly about everything I do.</p>
+            <p>I will copy/paste the entire post I wrote below, for you to read. I won't link my LinkedIn because I like privacy to a degree, and you certainly can and WILL find my LinkedIn and real name just by searching up the post per its contents below lol.</p>
+            <p>Okay I never post random stuff but one of my contacts on Discord sent this blog post talking about possibly the DUMBEST, most ELEMENTARY Entra ID vulnerability that I've ever witnessed: Actor Tokens.
+
+I leave it to you (the reader) to check out the blog, but put simply, you get complete compromise of a tenant AND connected/trusted tenants through these tokens, which log NOTHING and ARE NOT EVEN CONNECTED TO CONDITIONAL ACCESS. And of course, it's delegation-based, so you can impersonate anybody in the tenant, including Global Admins. Words cannot describe my surprise of how Microsoft thought this way okay to implement. I have completed my SC-900 course (never got the exam since it's not super needed, and Sec+ is a better investment), so I know a thing or two about Azure/Entra ID; this is total lunacy and needs to be revamped or completely removed from Entra ID.
+
+Enough words on my part, you can check out the blog here: https://lnkd.in/gNv3keUR. You can also see some snippets of the blog under this post, which should provide more than enough reason to hate on Microsoft once again. <b>Fin.</b></p>
+			<p>Truly incredible if you ask me. I sincerely hope this feature gets totally removed, since this sort of delegation is insanely dangerous and not at all needed in Azure imo, when we already have Conditional Access and Assignments. Feel free to DM me on Discord if you wanna share your thoughts on this though!</p>
+            <p>That's all I have to share. Thanks for stopping by :)</p>
+		</div>	
+	</div>
+	<hr>
+	<div class="dir">
+		<span class="headers">cd</span>
+		<span class="element12"><a href="actortoken.html">.</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../blog.html">..</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../notes.html">../notes-and-resources</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../index.html">~</a></span>
+	</div>
+</body>
+</html>
