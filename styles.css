@@ -1,6 +1,6 @@
 @font-face {
 	font-family: "B612";
-	src: url("B612.ttf")
+	src: url("B612.ttf");
 }
 
 body {
@@ -98,7 +98,6 @@ button:active {
 }
 
 code {
-    font-size: 105%;
     color: #61BD5E;
     background-color: #242529;
     padding: 1px;
