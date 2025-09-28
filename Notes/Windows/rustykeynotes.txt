@@ -1,0 +1,90 @@
+ad environment duh + winrm open
+Starting Nmap 7.95 ( https://nmap.org ) at 2025-06-28 16:03 EDT
+Nmap scan report for rustykey.htb (10.10.11.75)
+Host is up (0.080s latency).
+Not shown: 988 closed tcp ports (reset)
+PORT     STATE SERVICE       VERSION
+53/tcp   open  domain        Simple DNS Plus
+88/tcp   open  kerberos-sec  Microsoft Windows Kerberos (server time: 2025-06-29 04:03:06Z)
+135/tcp  open  msrpc         Microsoft Windows RPC
+139/tcp  open  netbios-ssn   Microsoft Windows netbios-ssn
+389/tcp  open  ldap          Microsoft Windows Active Directory LDAP (Domain: rustykey.htb0., Site: Default-First-Site-Name)
+445/tcp  open  microsoft-ds?
+464/tcp  open  kpasswd5?
+593/tcp  open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+636/tcp  open  tcpwrapped
+3268/tcp open  ldap          Microsoft Windows Active Directory LDAP (Domain: rustykey.htb0., Site: Default-First-Site-Name)
+3269/tcp open  tcpwrapped
+5985/tcp open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-server-header: Microsoft-HTTPAPI/2.0
+|_http-title: Not Found
+Service Info: Host: DC; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+netexec ldap rustykey.htb -u rr.parker -p '8#t5HE8L!W3A' --trusted-for-delegation --password-not-required --admin-count --users --groups
+[*] First time use detected
+[*] Creating home directory structure
+[*] Creating missing folder logs
+[*] Creating missing folder modules
+[*] Creating missing folder protocols
+[*] Creating missing folder workspaces
+[*] Creating missing folder obfuscated_scripts
+[*] Creating missing folder screenshots
+[*] Creating missing folder logs/sam
+[*] Creating missing folder logs/lsa
+[*] Creating missing folder logs/ntds
+[*] Creating missing folder logs/dpapi
+[*] Creating default workspace
+[*] Initializing NFS protocol database
+[*] Initializing FTP protocol database
+[*] Initializing SMB protocol database
+[*] Initializing VNC protocol database
+[*] Initializing WINRM protocol database
+[*] Initializing SSH protocol database
+[*] Initializing RDP protocol database
+[*] Initializing WMI protocol database
+[*] Initializing LDAP protocol database
+[*] Initializing MSSQL protocol database
+[*] Copying default configuration file
+LDAP        10.10.11.75     389    DC               [*] None (name:DC) (domain:rustykey.htb)
+LDAP        10.10.11.75     389    DC               [-] rustykey.htb\rr.parker:8#t5HE8L!W3A STATUS_NOT_SUPPORTED
+
+^^ odd error that appears with basically all commands?
+
+sudo bloodhound-python -d rustykey.htb -u rr.parker@rustykey.htb -p '8#t5HE8L!W3A'  -c all -ns 10.10.11.75
+INFO: BloodHound.py for BloodHound LEGACY (BloodHound 4.2 and 4.3)
+INFO: Found AD domain: rustykey.htb
+INFO: Getting TGT for user
+WARNING: Failed to get Kerberos TGT. Falling back to NTLM authentication. Error: [Errno Connection error (dc.rustykey.htb:88)] [Errno -2] Name or service not known
+INFO: Connecting to LDAP server: dc.rustykey.htb
+ERROR: Failure to authenticate with LDAP! Error 80090302: LdapErr: DSID-0C090908, comment: AcceptSecurityContext error, data 1, v4563 : Code: 49
+Traceback (most recent call last):
+  File "/usr/bin/bloodhound-python", line 33, in <module>
+    sys.exit(load_entry_point('bloodhound==1.8.0', 'console_scripts', 'bloodhound-python')())                                                             
+             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^                                                              
+  File "/usr/lib/python3/dist-packages/bloodhound/__init__.py", line 347, in main                                                                         
+    bloodhound.run(collect=collect,
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+                   num_workers=args.workers,
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+                   exclude_dcs=args.exclude_dcs,
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                   fileNamePrefix=args.outputprefix)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/bloodhound/__init__.py", line 78, in run                                                                           
+    self.pdc.prefetch_info('objectprops' in collect, 'acl' in collect, cache_computers=do_computer_enum)                                                  
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^                                                  
+  File "/usr/lib/python3/dist-packages/bloodhound/ad/domain.py", line 576, in prefetch_info
+    self.get_objecttype()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/bloodhound/ad/domain.py", line 259, in get_objecttype
+    self.ldap_connect()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3/dist-packages/bloodhound/ad/domain.py", line 70, in ldap_connect                                                                 
+    ldap = self.ad.auth.getLDAPConnection(hostname=self.hostname, ip=ip,
+                                          baseDN=self.ad.baseDN, protocol=protocol)
+  File "/usr/lib/python3/dist-packages/bloodhound/ad/authentication.py", line 179, in getLDAPConnection
+    raise CollectionException('Could not authenticate to LDAP. Check your credentials and LDAP server requirements.')
+bloodhound.ad.utils.CollectionException: Could not authenticate to LDAP. Check your credentials and LDAP server requirements. 
+
+^^ still breaking? why?

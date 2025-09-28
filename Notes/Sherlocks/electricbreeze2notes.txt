@@ -1,0 +1,41 @@
+extract the JAR using jar tf <jar file>, we can see META-INF/maven/org.example/Director_tomcat_memShell/ is a mildly sus directory, with a pom.xml and pom.properties file. HTB hints that these files may show the origins of the attacker. We can extract the contents of the pom.xml file using jar xf <jar file> META-INF/maven/org.example/Director_tomcat_memShell/pom.xml.
+- This creates a local META-INF directory with the extracted file in its original hierarchy; i.e. META-INF/maven.../pom.xml
+- We can find some foreign characters under the <version> tag, which can be translated from Chinese to "Check for the latest version" 
+
+The application name to be found is VersaTest, found under the <name> tag
+
+The file that hooks into Tomcat is com/versa/vnms/ui/TestMain.class, this is only found thanks to the answer hinting at the format, however now we can go ahead and extract this file using the same jar xf command from before. We can run strings against it, and need to look for a command that resolves the PID for the Tomcat hook; /usr/bin/pgrep, it can be found pretty easily and is pretty clear per its name.
+
+The file used for the webshell functionality is com/versa/vnms/ui/init/WriteTestTransformer.class, though this took some guessing lol. 
+
+Same as before, we can go ahead and extract the file and view it with strings. Can't see anything at the moment; it's time to disassemble, which can be done using https://dmitriy-gulyaev.github.io/java-disassembler/, an online java disassembler!
+- What was originally found in strings showed a username and password being fetched. While we knew this is the function to authenticate, we didn't know its name.
+- The disassembler shows the code for each method in the .class files, which shows that getInsertCode handles this authentication, as we can see the same code unveiled in strings under the 'idc' bit.
+
+The parameter required for the response is 'p', as shown in the String pwd = $1.getParameter("p"); code.
+
+The hardcoded key is 5ea23db511e1ac4a806e002def3b74a1.
+
+The encryption used is AES, shown in this big SecretKey that is not-so-secret line: SecretKeySpec secretKey = new SecretKeySpec(new byte[]{56, 50, 97, 100, 52, 50, 99, 50, 102, 100, 101, 56, 55, 52, 99, 53, 54, 101, 101, 50, 49, 52, 48, 55, 101, 57, 48, 57, 48, 52, 97, 97}, "AES");
+
+The ciphermode used is ECB, which is used to reverse the encryption process of the AES key.
+
+The key is shown above lol.
+
+The value of they key after decryption can be found using grok lololol:
+- Basically we need to convert the byte array above to a hex/ASCII key, since each number in the array corresponds to an ASCII character and whatnot:
+	- The ASCII key is: 82ad42c2fde874c56ee21407e90904aa
+	- They hex key is: 3832616434326332666465383734633536656532313430376539303930346161
+- The answer to task 18 is literally the ASCII key lol.
+
+The next byte array used for Task 19 is: {100, 101, 102, 105, 110, 101, 67, 108, 97, 115, 115}, which is passed to  java.lang.reflect.Method, which is used to construct the method name used at runtime.
+
+The base64 string returned to the client upon successful definition is R2qBFRx0KAZceVi+MWP6FGGs8MMoJRV5M3KY/GBiOn8=. The string appears to be derived from the same AES key above, so to decrypt this, we need to firstly Base64 decrypt, then AES decrypt.
+- Uhhh jk? The output is 'classDefine by clzd', and can be found using https://www.devglan.com/online-tools/aes-encryption-decryption.
+	- We enter the string as the encrypted input, then specify the AES-256 ASCII key we found previously, and we can instantly get an output back? 
+	- Either the author didn't know this was actually AES-encoded or the above tool automatically B64 decoded it? idk
+
+Back to checking the META-INF, we can see that com/versa/vnms/ui/init/CapturePassTransformer.class is presumably used to log passwords for exfiltration, as hinted by the task answer. We can extract the file as we previously have and disassemble it in the aforementioned tool.
+- Take a guess for the name lol; captureLoginPasswordCode
+- The variable saving the AES key (The ASCII key we discovered previously, not even the byte array lol, just the plaintext key) is secretKey
+- The file holding credentials is /tmp/.temp.data, we legit found this in the previous Threat Intelligence sherlock lol

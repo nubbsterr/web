@@ -1,0 +1,39 @@
+password to unzip the malware is 6vtHz3vHx1K6
+
+We can see an executable named func_pointer.exe, which we will upload to virsutotal. 
+- no read permission on the file so whatev, no virustotal ig
+- sudo sha256sum func_pointer.exe shows the sha256 hash of: edd41b4a819f917f81203424730aaf0c24cc95e40acfc0f1bd90b11dadf58015
+
+running strings against the exe shows it is clearly a PE meant for windows. 
+- We can immediately see some imports being made from KERNEL32.dll, and ucrtbase.dll, which we've never seen before.
+- MinGW GCC was used to compile this
+
+An aside from here, we need to install some tools to continue analysis of the file, sudo apt install binutils radare2, which will give use readelf and objdump, and most importantly, rabin2 for PE analysis.
+- already installed lol
+
+
+- the compilation date can be found by running sudo rabin2 -I func_pointer.exe, we can see that:
+	- it was compiled on Thu Apr  6 11:21:17 2023 or 2023-04-06 11:21:17, however HTB doesn't like this???????? wtf bro
+		- time is actually 2023-04-06 15:21:17, we can get this by searching up the SHA256 hash on virustotal!
+	- base address is 0x140000000 (baddr)
+	- aslr is not enabled, since it isn't showing up here, it would be enabled if we saw DllCharacteristics included 0x0040 in any form (e.g. 0x0140 or 0x8540) in rabin2 output. Objdump -x shows DLLCharacteristics as 00000100, which further cements this point.
+	- the entry point address is 0x0000000000001125 (sudo objdump -x func_pointer.exe | grep Entry, rabin2 couldn't find it???)
+		- shorten it down to 0x1125 and we gud
+	- we can view functions used in the PE w/ sudo rabin2 -i func_pointer.exe, which shows a lot of imports. This will be useful since we need to find an invoked functions that was ran with the letter 'V', which cannot be VirtualQuery/VirtualProtect.
+		- We can use r2 to show some internal functions: sudo r2 func_pointer.exe, then run 'aaa' to analyze the binary for its functions, then run 'afl' to print the functions and their addresses in memory.
+
+To continue answering stuff, we need to get the memory address of this stuff. We can start by doing some disassembly using r2:
+- pdf @ entry0 will disassemble the binary at the entry point, we can now see the assembly code at this point!
+	- we can see a function call to fcn.140001154
+	- we can see mov rax, qword [0x1400054f0] ; [0x1400054f0:8]=0x140009130 is ran
+
+Slight aside, i decided to install Cutter to continue since using radare2 is kinda pain and UI might be more helpful:
+- Legit need to open a root shell w/ sudo -i then run Cutter w/ chmod +x appimage-that-was-downloaded, ./Cutter.... lol
+- We can now load the file into Cutter! 
+
+Now to go through the tasks:
+- check sections by going to Window --> Info --> Section. We can see none of the sections have high entropy,except .text and .rdata. rdata is probably our best bet to find encrypted data.
+	- cam also open the Console by going to Window then clicking Console, then run iS entropy
+	- rdata address is 0x140005000
+	- view it in hexdump output
+- funnily enough, while blindly searching through the Strings tab, we can see VirtualAllocEx is called! that's our answer for task 11

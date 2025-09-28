@@ -1,0 +1,69 @@
+Get mftecmd to parse MFT into CSV, to explore in timeline explorer
+- .\MFTECmd.exe -f 'C:\Users\Mourad\Downloads\Streamer\Streamer\Acquisition\C\$MFT' --csv . --csvf MFT.csv
+
+Now checking this out, we need to find a malicious zip file. We can check for any zip files in the MFT, and also check for zoneid=3.
+
+We can see 2 results! The malicious zip for task 1 is: OBS-Studio-28.1.2-Full-Installer-x64.zip
+
+The renamed file can be tracked by checking the USN journal. We can use MFTECmd as we did before and view the USN journal in timeline explorer:
+- .\MFTECmd.exe -f 'C:\Users\Mourad\Downloads\Streamer\Streamer\Acquisition\C\$Extend\$J' --csv . --csvf MFT-J.csv
+
+We can see that after the OBS zip, there is a rename operation done against it, showing a new name: OBS-Studio-28.8KgRH_9b.1.2-Full-Installer-x64.zip.part, though HTB wants the full path. Skipping ahead, we can see the rename operation took place on 2023-05-05 10:19:46.
+
+Uh nope? What i instead did was filter for the entry number of the initial zip download and the Rename operation against the USN journal in timeline explorer. From there, we get a few hits. It's just trial and error since there's no real way to know what rename is what imo?\
+
+---
+
+JK LOL you need to match the entry AND parent entry number, we can see the original name but also the RENAMED file afterwards! The full path is C:\Users\Simon.stark\Documents\Streaming Software\Obs Streaming Software.zip!
+
+The FULL URL where the initial download was made is: http://obsproicet.net/download/v28_23/OBS-Studio-28.1.2-Full-Installer-x64.zip.
+
+We're now told to "dig deeper" and find the IP Address on which the malicious domain was being hosted. We can check the event logs under C:\Users\Mourad\Downloads\Streamer\Streamer\Acquisition\C\Windows\System32\winevt\Logs, checking the Security log specifically for network connections, and search for the domain specifically.
+
+Yea nothing there. Fast forward a lil, but there is a 'pFirewall' log in C:\Users\Mourad\Downloads\Streamer\Streamer\Acquisition\C\Windows\System32\LogFiles\Firewall. Here we can see plaintext logs of network connections to public IPs. Correlating the time of the initial download (2023-05-05 10:19:46), we find literally nothing lol.
+
+---
+
+Tracing back, i'm just gonna list findings for each kind of artifact found on disk. We already looked into MFT and USN journal se we'll skip those. The following will be checked in accordance to our notes on digital forensics (https://github.com/nubbsterr/obsidian-notes/blob/main/Cybersecurity%20Project%20Space%20and%20More/HackTheBox%20Academy/Blue%20Teaming/Intro%20to%20Digital%20Forensics.md#execution-artifacts):
+
+Note that the registry hive to grab is C:\Windows\System32\config\SYSTEM for most artifacts here. See notes for more info.
+
+1. Prefetch (C:\Windows\Prefetch):
+- There is both an OBS-STUDIO.EXE and OBS-STUDIO-28.1.2.EXE prefetch file. This suggests that the OBS-STUDIO.EXE is, most likely, our bad malicious setup file, or a backdoor of sorts. We'll verify with the next few artifacts.
+
+
+2. Amcache (C:\Windows\AppCompat\Programs\Amcache.hve):
+- Loading the .hve file into RegistryExplorer, we can see a big list of garbage that i won't sift thru lol.
+
+3. Shimcache (HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\AppCompatCache):
+- Loading the SYSTEM hive into RegistryExplorer, we can navigate to this path and see
+
+
+4. Jump Lists/Recently accessed files (%AppData%\Microsoft\Windows\Recent):
+- The path to check is C:\Users\Simon.stark\AppData\Roaming\Microsoft\Windows\Recent. There is a bit to see, but namely the two Custom/LocalDestinations folder. This may be an artifact we haven't seen before?
+
+5. Scheduled Tasks (C:\Windows\System32\Task):
+- Nothing to note here.
+
+
+6. Run Keys (https://github.com/nubbsterr/obsidian-notes/blob/main/Cybersecurity%20Project%20Space%20and%20More/HackTheBox%20Academy/Blue%20Teaming/Intro%20to%20Digital%20Forensics.md#windows-persistence-artifacts):
+- Nothing present.
+
+
+7. Services (HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services):
+- Too many entries to look for lol.
+
+
+8. SRUM (C:\Windows\System32\sru):
+- Doesn't exist on disk lol.
+
+9. Windows BAM (HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Services\bam\State\UserSettings\{USER-SID}):
+- Nothing here.
+
+--- Cyberjunkie is the name of the analyst, this is someone who logged on, so we can guess, based on the other users on disk, that this was the analyst.
+
+--- Clicking on the link for any domain uploaded to VirusTotal will show the Relations and thus the IP of the domain!!!!!!!!!! The IP shown initially is not the answer. A user commented a hash for a separate file hosting on this domain (https://www.virustotal.com/gui/file/5049de4c58ea923723389e4d732f1c134dc38582971f4872593e1153db945078/relations). Digging further we can see one of the Execution Parents is the OBS zip (https://www.virustotal.com/gui/file/e997070501fb88fec4a48450dd0fb45de9d5d67be7a519ed4ec9f5a5d506b75c/relations). Here we can see a few IPs which we will brute force el em ay o.
+	- None of them were right HOWEVER, the contacted domains show 3 hits. The driveusercontent doesn't give anything, and further investigation online nets nothing as well. Last resort is log files once again.
+	- 
+
+--- Aborted sherlock, absurdly annoying/hard and not too much fun to run.

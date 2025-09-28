@@ -1,0 +1,7 @@
+[masterkey] with password: ohsonefarious92 (protected user)                                                               key : b759020c3e3a1c15a2d1863d50ee4b27cbf13552cd51f286e68a3c52f70a52086ce301e9cabbbeed8442c4279f679c94cd9e605e5a79f00b4922c80af7a26382                                                                                                          sha1: 6b8cbde313c2f5902c1f1c5ad68d6407c3245680
+
+main key: W2k+02GzBVeZKJhXsnRIqNrtrWVUBAvs0gLNe52zXKw=
+
+masterkey folder and SID: C:\Users\Mourad\Downloads\CrewCrow\C\Users\Nefarious\AppData\Roaming\Microsoft\Protect\S-1-5-21-3675116117-3467334887-929386110-1001
+
+zoom folder stuff: C:\Users\Mourad\Downloads\CrewCrow\C\Users\Nefarious\AppData\Roaming\Zoom\data

