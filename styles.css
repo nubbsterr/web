@@ -1,11 +1,11 @@
 @font-face {
-	font-family: "B612";
-	src: url("B612.ttf");
+	font-family: "Geist";
+	src: url("Geist.ttf");
 }
 
 body {
 	background-color: #131418;
-	font-family: "B612";
+	font-family: "Geist";
 	overflow-x: hidden;
 	overflow-y: auto;
 	padding-top: 10px;

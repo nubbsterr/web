@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>nubb/blog/Flare-On-12-Review</title>
+	<meta charset="UTF-8">
+	<meta name="description" content="A review of my experience w/ Flare On 12! (First RE CTF!)">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="../styles.css">
+	<link rel="icon" type="image/x-icon" href="../images/favicon.ico">
+</head>
+<body>
+	<div class="main">
+		<div class="blog">
+			<h2>> Flare-On 12 CTF Review</h2>
+            <p><i>(10/18/2025), 4 minute read &#x23f0</i></p>
+			<br>
+			<p>Flare-On 12 was my first real CTF experience. I'm not sure if you can call HTB a bunch of CTFs (through the seasonal machines), but without a doubt, this was a neat RE CTF.</p>
+            <p>I completed 4 challenges during the event, which I'm going to talk about in decent depth in this blog!</p>
+            <p>First of the challenges was DrillBabyDrill! It's basically a Captcha of sorts to determine if you aren't AI and can actually read code, because the whole point of the game is to just determine how to get the flag without really needing to break the game code; because it's already broken lol. Boulders are placed in all but one column of the maps, which is the length of the current level name. E.g. for Mexico, no boulders are in column 6. So you can just drill down and collect all the bears in the end and get your flag!</p>
+            <p>Project Chimera is the next challenge, which is your first taste of utter PAIN and SUFFERING. I had to get a lot of pointers for this one which was not too great. To give you the jist of it, you have a big piece of bytecode, which you can write to a .pyc file which a given correct pyc header; this header MUST have the correct Python version of the bytecode, which can be determined through brute force. The other fields need to be set appropriately to create a proper pyc header (timestamp of modiciation and source size namely). After getting the pyc, you can use <a href="https://pylingual.io/" target="_blank">PyLingual</a> to decompile it and get a NEW LAYER OF BYTECODE. This bytecode can be turned into ANOTHER pyc just like the last. Finally, the last bit of code requires some cryptography knowledge, as we need to reverse some XOR decryption among other things, to finally get our flag! That's a short rundown of the challenge, and I'm certain others will have better writeups than mine, especially if they are more knowledgable than me.</p>
+            <p>Challenge 3 is a big change of pace because it is actually PDF forensics. In reality it is rather shrimple because you can 1) quickly see the encrypted bits in the doc and 2) realize that the file is not password-protected and can be immediately cracked. Unfortunately for me, I couldn't crack this cuz Remnux was being goofy and qpdf was breaking???????? A friend of mine straight up handed his cracked PDF and allowed me to continue. Once the PDF is cracked, we can extract its Content object and see that there is a hex string of sorts left inside it, which we can crack shrimply with some Python. To keep it simple, the whole jist is to turn the hex string into binary, turn the binary into a grayscale image using PIL, then turn each pixel of the image into its assoicated ASCII character to get the flag. This challenge is really weird and took like 2 days to solve, which was exclusively me asking for hints because I had 0 clue what I was doing and Grok was being stupid and hallucinating; another reason why you should have friends and not rely on AI a bunch.</p>
+            <p>Challenge 4 grants us some static analysis opportunities. We are given a Windows .exe, which we can't execute. For the uninitiated, it's game over already. However, if we dig deeper, we can see that the PE structure of the file is broken. Specifically, the 'MZ' signature at the beginning of the PE is missing; there is only a Z in the beginning. We can modify the bytes here using any hex editor, or, like me, through Detect-It-Easy; super shrimple. Now we have a working .exe, but it's flagged as a trojan under VirusTotal, so best not to run it immediately. Instead, let's go ahead and check it under Binary Ninja and see if we can find anything. When we do run the executable, it makes a bunch of copies of the same file. One of which is actually broken; the 150th copy. Much like the first, original, unzipped binary, we can fix the MZ signature in a hex editor. Then, when we run one of the other binaries, then run the 150th copy will get executed and give us the flag. In my case, my attempt was literally broken and didn't work like this. However, my cracked uni friend gave me a nice breakdown of what to do to solve this challenge.</p>
+        <p>1) Fix the PE signature w/ a hex editor. 2) Run the patched exe. 3) Rename the patched exe and run it again. 4) WITHOUT CLOSING ANYTHING, rename ONE of the binary copies to 'UnholyDragon-150'. 5) Run the renamed copy and get your flag!</p>
+        <p>That's where everything ended, since Challenge 5 is the great wall of difficulty spikes and I had 0 clue what to do, nor did my friend have a clue, so I stopped there. Did I learn a lot? Sorta? Was it fun? Kinda?????????????? The challenges were rather esoteric in nature and weren't really traditional reversing or crack-mes like what I expected it was going to be. It was still cool to run them and pretty chill.</p>
+        <p>That's all I've got to say. See you guys in another 10 years.</p>
+		</div>	
+	</div>
+	<hr>
+	<div class="dir">
+		<span class="headers">cd</span>
+		<span class="element12"><a href="flareCTFreview.html">.</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../blog.html">..</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../notes.html">../notes-and-resources</a></span>
+		<br>
+		<span class="headers">cd</span>
+		<span class="element12"><a href="../index.html">~</a></span>
+	</div>
+</body>
+</html>
