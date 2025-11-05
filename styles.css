@@ -1,104 +1,78 @@
+/* -------------------------------------------------
+   yes grok made the mobile responsive fiz to my css
+   yes i hate writing css so i prompt grokius maximus
+   ------------------------------------------------- */
 @font-face {
-	font-family: "Geist";
-	src: url("Geist.ttf");
+    font-family: "Geist";
+    src: url("Geist.ttf");
 }
 
-body {
-	background-color: #131418;
-	font-family: "Geist";
-	overflow-x: hidden;
-	overflow-y: auto;
-	padding-top: 10px;
-	padding-bottom: 20px;
-	padding-left: 20px;
-	line-height: 1.30;
+/* -------------------------------------------------
+   Global page defaults
+   ------------------------------------------------- */
+html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #131418;
+    font-family: "Geist", monospace;
+    color: #EAEAEA;
+    line-height: 1.4;
+    overflow-x: hidden;          /* never horizontal scroll */
 }
 
-.main{
-	color: #EAEAEA;
-	font-size: 20px;
+/* -------------------------------------------------
+   Containers
+   ------------------------------------------------- */
+.main, .dir, .blog {
+    padding: 10px 20px;
+    font-size: 18px;
 }
-
 .blog {
-	max-width: 800px;
-	margin-left: auto;
-	margin-right: auto;
-	margin-top: 20px;
-	margin-bottom: 20px;
-	padding: 20px;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
 }
 
-.dir{
-	color: #EAEAEA;
-	font-size: 20px;
+/* -------------------------------------------------
+   EVERY LINE IS NOW A SIMPLE STACK
+   ------------------------------------------------- */
+.headers {
+    color: #EAEAEA;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 0.2em;        /* tiny space between label & value */
 }
 
-.headers{
-	color: #EAEAEA; 
-	font-weight: bold;
-}
-
-.element{
-	color: #C3C6Cf;
-	display: inline-block; 
-	font-weight: bold; 
-	position: absolute; 
-	left: 16em;
-}
-
-.element12{
-	color: #C3C6CF;
-	display: inline-block; 
-	font-weight: bold; 
-	position: absolute; 
-	left: 12em;
-}
-
-hr {
-	margin: 30px 0;
-}
-
-a {
-	color: #54A4FD; 
-}
-
-a:visited {
-	color: #54A4FD; 
-}
-
-a:hover {
-	color: #77B5FF;
-}
-
-h2 {
-	color: white;
-	margin-bottom: 0px;
+.element12,
+.element {
+    color: #C3C6CF;
+    font-weight: bold;
+    display: block;
+    margin-left: 2ch;            /* consistent indentation like previously, but now it wraps properly */
+    margin-bottom: 1em;          /* space between pairs */
 }
 
 h3 {
-	color: white;
-	margin-bottom: 10px;
+    color: white;
+    margin: 1.5em 0 1em 0;
 }
 
-button {
-	background-color: black;
-	color: white;
-	transition-duration: 0.5s;
-}
+a { color: #54A4FD; text-decoration: none; }
+a:visited { color: #54A4FD; }
+a:hover   { color: #77B5FF; }
 
-button:hover {
-	background-color: white;
-	color: black;
-	transition: 0.5s;
-	cursor: pointer;
+hr { 
+    margin: 2rem 0; 
+    border: 0; 
+    border-top: 1px solid #333; 
 }
-
-button:active {
-	background-color: lime;
+h2 { 
+    color: white; 
+    margin-left: 1rem;
+    margin-bottom: 1rem; 
 }
-
-code {
-    color: #61BD5E;
-    background-color: #242529;
-    padding: 1px;
+code { 
+    color: #61BD5E; 
+    background: #242529; 
+    padding: 0 .2em; 
 }
