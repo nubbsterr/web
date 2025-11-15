@@ -9,13 +9,14 @@
 
 /* -------------------------------------------------
    Global page defaults
+   Catpuccin mocha colours!!!!!!!!!!!!!!!
    ------------------------------------------------- */
 html, body {
     margin: 0;
     padding: 0;
-    background-color: #131418;
+    background-color: #111318;
     font-family: "Geist", monospace;
-    color: #EAEAEA;
+    color: #cdd6f4;
     line-height: 1.4;
     overflow-x: hidden;          /* never horizontal scroll */
 }
@@ -37,7 +38,6 @@ html, body {
    EVERY LINE IS NOW A SIMPLE STACK
    ------------------------------------------------- */
 .headers {
-    color: #EAEAEA;
     font-weight: bold;
     display: block;
     margin-bottom: 0.2em;        /* tiny space between label & value */
@@ -45,7 +45,6 @@ html, body {
 
 .element12,
 .element {
-    color: #C3C6CF;
     font-weight: bold;
     display: block;
     margin-left: 2ch;            /* consistent indentation like previously, but now it wraps properly */
@@ -53,13 +52,12 @@ html, body {
 }
 
 h3 {
-    color: white;
     margin: 1.5em 0 1em 0;
 }
 
-a { color: #54A4FD; text-decoration: none; }
-a:visited { color: #54A4FD; }
-a:hover   { color: #77B5FF; }
+a { color: #89b4fa; text-decoration: none; }
+a:visited { color: #f38ba8; }
+a:hover   { color: #f38ba8; }
 
 hr { 
     margin: 2rem 0; 
@@ -72,7 +70,6 @@ h2 {
     margin-bottom: 1rem; 
 }
 code { 
-    color: #61BD5E; 
-    background: #242529; 
+    color: #f38ba8; 
     padding: 0 .2em; 
 }
