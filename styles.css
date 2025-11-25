@@ -14,9 +14,9 @@
 html, body {
     margin: 0;
     padding: 0;
-    background-color: #111318;
+    background-color: #191919;
     font-family: "Geist", monospace;
-    color: #cdd6f4;
+    color: #f0f0f0;
     line-height: 1.4;
     overflow-x: hidden;          /* never horizontal scroll */
 }
@@ -55,14 +55,14 @@ h3 {
     margin: 1.5em 0 1em 0;
 }
 
-a { color: #89b4fa; text-decoration: none; }
-a:visited { color: #f38ba8; }
-a:hover   { color: #f38ba8; }
+a { color: #8a98ac; text-decoration: none; }
+a:visited { color: #8aacab; }
+a:hover   { color: #8aacab; }
 
 hr { 
     margin: 2rem 0; 
     border: 0; 
-    border-top: 1px solid #333; 
+    border-top: 1px solid #393939; 
 }
 h2 { 
     color: white; 
@@ -70,6 +70,6 @@ h2 {
     margin-bottom: 1rem; 
 }
 code { 
-    color: #f38ba8; 
+    color: #8aac8b; 
     padding: 0 .2em; 
 }
